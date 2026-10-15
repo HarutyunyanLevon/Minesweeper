@@ -535,6 +535,7 @@ GameObject:
   - component: {fileID: 895912701}
   - component: {fileID: 895912699}
   - component: {fileID: 895912702}
+  - component: {fileID: 895912704}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -606,7 +607,7 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_MaskInteraction: 0
-  m_Sprite: {fileID: 21300000, guid: ca72a1eef40303d47989d722284cf86d, type: 3}
+  m_Sprite: {fileID: 21300000, guid: b743424f7044db64f834cf19764a60de, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
@@ -662,6 +663,23 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &895912704
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 895912698}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ff2a8105f35e8864f8aade2e9812aefc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MinefieldClerk.Player.DeminerSprites
+  player: {fileID: 895912701}
+  body: {fileID: 895912700}
+  front: {fileID: 21300000, guid: b743424f7044db64f834cf19764a60de, type: 3}
+  back: {fileID: 21300000, guid: 7688c753cc62a2a4f8d3f874c0c792a5, type: 3}
+  stepSeconds: 0.16
 --- !u!1 &1224072700
 GameObject:
   m_ObjectHideFlags: 0
@@ -759,6 +777,8 @@ MonoBehaviour:
   grassTiles:
   - {fileID: 11400000, guid: 28de931aebfd26d48931370fc80de4d5, type: 2}
   - {fileID: 11400000, guid: 328676c549b702f4dbc3837027ae19af, type: 2}
+  - {fileID: 11400000, guid: a05b63590ea60e84eba716a0d66d27a8, type: 2}
+  - {fileID: 11400000, guid: 6d52830500996134890fca86a4517ce2, type: 2}
   dirtTile: {fileID: 11400000, guid: 5816cc440b512d646896371cd0e64b51, type: 2}
   borderTile: {fileID: 11400000, guid: 263a770019d569242a929acf81136372, type: 2}
   fieldWidth: 24
@@ -1082,6 +1102,60 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2089360941
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2089360943}
+  - component: {fileID: 2089360942}
+  m_Layer: 0
+  m_Name: Decor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2089360942
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2089360941}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4f9d091a3a084a7409fecb52d6567422, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MinefieldClerk.Field.FieldDecor
+  field: {fileID: 1297487638}
+  mines: {fileID: 463792612}
+  fenceX: {fileID: 21300000, guid: a3f3f505a4414d14c9b1b171cdac1c81, type: 3}
+  fenceXBroken: {fileID: 21300000, guid: 4ad0c07865d6c5a42a6f9dee51c03cde, type: 3}
+  fenceY: {fileID: 21300000, guid: 80908ae3b66dc2a419546038d8d8992d, type: 3}
+  fenceYBroken: {fileID: 21300000, guid: 0cfbbdf7bc56eb94fa84099b40c37943, type: 3}
+  farmhouse: {fileID: 21300000, guid: b2fd5d7b36e79704594bfbda3cf7fcf7, type: 3}
+  tank: {fileID: 21300000, guid: 1cd00dca80d401241901a8793416d055, type: 3}
+  seed: 7
+  brokenChance: 0.22
+--- !u!4 &2089360943
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2089360941}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -1095,3 +1169,4 @@ SceneRoots:
   - {fileID: 2002866356}
   - {fileID: 226217792}
   - {fileID: 1318493904}
+  - {fileID: 2089360943}

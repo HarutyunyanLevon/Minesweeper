@@ -37,6 +37,9 @@ namespace MinefieldClerk.Player
         public Vector3Int CurrentCell { get; private set; }
 
         /// <summary>The neighbouring cell the player is facing: where probing and flagging act.</summary>
+        /// <summary>Facing as a cell offset (each component -1..1).</summary>
+        public Vector2Int Facing => facing;
+
         public Vector3Int FacingCell => new Vector3Int(CurrentCell.x + facing.x, CurrentCell.y + facing.y, 0);
 
         /// <summary>Cell under the mouse pointer.</summary>
