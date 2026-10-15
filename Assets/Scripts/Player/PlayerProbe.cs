@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using MinefieldClerk.Field;
@@ -6,7 +7,11 @@ namespace MinefieldClerk.Player
 {
     /// <summary>
     /// Probing and flagging the cell in front of the player.
-    /// Space / gamepad A / right click probes, F / gamepad X / middle click flags. A probed mine tile can set the mine off.
+    /// Space / gamepad A / right click probes, F / gamepad X / middle click flags.
+    /// Walking onto an unprobed, unflagged mine arms it exactly like a probe does.
+    /// A burning mine explodes after 1.5-3 s unless it is a dud (10%).
+    /// A mine under the player's feet explodes at once when the player leaves its tile (moving inside the tile is fine).
+    /// A mine armed by probing a different cell explodes at once when the player moves at all.
     /// </summary>
     public class PlayerProbe : MonoBehaviour
     {
@@ -14,8 +19,99 @@ namespace MinefieldClerk.Player
         [SerializeField] private MineField mines;
         [SerializeField] private PlayerHealth health;
 
+        private readonly HashSet<Vector3Int> underFoot = new HashSet<Vector3Int>();
+        private readonly Dictionary<Vector3Int, Vector3> remote = new Dictionary<Vector3Int, Vector3>();
+        private readonly List<Vector3Int> scratch = new List<Vector3Int>();
+        private Vector3Int lastCell;
+        private bool haveLastCell;
+
+        private void OnEnable()
+        {
+            mines.MineArmed += OnArmed;
+            mines.MineTriggered += OnResolved;
+            mines.MineDud += OnResolved;
+            mines.MineTriggered += OnTriggered;
+            mines.Regenerated += OnRegenerated;
+        }
+
+        private void OnDisable()
+        {
+            mines.MineArmed -= OnArmed;
+            mines.MineTriggered -= OnResolved;
+            mines.MineDud -= OnResolved;
+            mines.MineTriggered -= OnTriggered;
+            mines.Regenerated -= OnRegenerated;
+        }
+
+        private void OnArmed(Vector3Int cell, float fuse)
+        {
+            if (cell.x == player.CurrentCell.x && cell.y == player.CurrentCell.y)
+            {
+                underFoot.Add(new Vector3Int(cell.x, cell.y, 0));
+            }
+            else
+            {
+                remote[new Vector3Int(cell.x, cell.y, 0)] = player.transform.position;
+            }
+        }
+
+        private void OnResolved(Vector3Int cell)
+        {
+            Vector3Int key = new Vector3Int(cell.x, cell.y, 0);
+            underFoot.Remove(key);
+            remote.Remove(key);
+        }
+
+        private void OnRegenerated()
+        {
+            underFoot.Clear();
+            remote.Clear();
+            haveLastCell = false;
+        }
+
+        private void OnTriggered(Vector3Int cell)
+        {
+            health.Hit();
+        }
+
         private void Update()
         {
+            // Walking onto a mine arms it like a probe would (no number appears on safe cells).
+            Vector3Int now = player.CurrentCell;
+            if (!haveLastCell)
+            {
+                lastCell = now;
+                haveLastCell = true;
+            }
+            else if (now != lastCell)
+            {
+                lastCell = now;
+                mines.StepOn(now);
+            }
+
+            // Leaving the tile of a burning mine detonates it immediately.
+            if (underFoot.Count > 0)
+            {
+                scratch.Clear();
+                foreach (Vector3Int c in underFoot)
+                {
+                    if (c.x != now.x || c.y != now.y) scratch.Add(c);
+                }
+                foreach (Vector3Int c in scratch) mines.Detonate(c);
+            }
+
+            // A mine armed at a distance explodes as soon as the player moves.
+            if (remote.Count > 0)
+            {
+                scratch.Clear();
+                Vector3 pos = player.transform.position;
+                foreach (KeyValuePair<Vector3Int, Vector3> pair in remote)
+                {
+                    if ((pos - pair.Value).sqrMagnitude > 0.0001f) scratch.Add(pair.Key);
+                }
+                foreach (Vector3Int c in scratch) mines.Detonate(c);
+            }
+
             if (health.Dead) return;
 
             Keyboard kb = Keyboard.current;
@@ -45,10 +141,7 @@ namespace MinefieldClerk.Player
             if (probe)
             {
                 player.FaceCell(cell);
-                if (mines.Probe(cell) == ProbeOutcome.Mine)
-                {
-                    health.Hit();
-                }
+                mines.Probe(cell);
             }
             else if (flag)
             {

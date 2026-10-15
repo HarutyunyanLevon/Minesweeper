@@ -31,6 +31,10 @@ namespace MinefieldClerk.DevTools
             {
                 view.ToggleAllNumbers();
             }
+            if (view != null && kb != null && kb.gKey.wasPressedThisFrame)
+            {
+                view.ToggleGrid();
+            }
         }
 
         private void OnGUI()
@@ -45,9 +49,9 @@ namespace MinefieldClerk.DevTools
             Vector3Int t = player.TargetCell;
             string text =
                 "State: " + state + "\n" +
-                "Probed " + mines.ProbedCount + "   Flags " + mines.FlagCount + "   Exploded " + mines.ExplodedCount + "   (mines in field: " + mines.MineCount + ")\n" +
+                "Probed " + mines.ProbedCount + "   Flags " + mines.FlagCount + "   Burning " + mines.ArmedCount + "   Exploded " + mines.ExplodedCount + "   Duds " + mines.DudCount + "   (mines in field: " + mines.MineCount + ")\n" +
                 "Target cell " + t.x + ", " + t.y + "\n" +
-                "WASD/LMB move   Space/RMB probe   F/MMB flag   R new field   F1 show mines   N show all numbers";
+                "WASD/LMB move   Space/RMB probe   F/MMB flag   R new field   F1 show mines   N show all numbers   G grid";
 
             GUI.Label(new Rect(14, 10, 1400, 140), text, style);
 

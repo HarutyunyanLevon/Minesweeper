@@ -505,8 +505,12 @@ MonoBehaviour:
   field: {fileID: 1297487638}
   density: 0.14
   safeRows: 2
+  startSafeRadius: 2
   radius: 1
   seed: -1
+  fuseMin: 1.5
+  fuseMax: 3
+  dudChance: 0.1
 --- !u!4 &463792613
 Transform:
   m_ObjectHideFlags: 0
@@ -712,6 +716,7 @@ MonoBehaviour:
   field: {fileID: 1297487638}
   mines: {fileID: 463792612}
   probedOverlay: {fileID: 21300000, guid: ec0982aee412067478a8911da5a5834a, type: 3}
+  probedOverlayB: {fileID: 21300000, guid: c023d229c8f23864ab4d913e7edf6fda, type: 3}
   digits:
   - {fileID: 21300000, guid: 830647da2ea9e2d4791ae84b2e0534fa, type: 3}
   - {fileID: 21300000, guid: 19711619fe029084b9abbce8f4a4c048, type: 3}
@@ -728,7 +733,11 @@ MonoBehaviour:
   - {fileID: 21300000, guid: c0a319591077f1445a100abd428b4281, type: 3}
   - {fileID: 21300000, guid: fa0750156d431234787422a9b3030e85, type: 3}
   - {fileID: 21300000, guid: b41affc91aa3d80409f2db1a760d208b, type: 3}
+  - {fileID: 21300000, guid: 724dc399d400f984cb9c8325517a18b2, type: 3}
+  - {fileID: 21300000, guid: b72780ab3398f6941b7eb4ad9ddd94fa, type: 3}
+  - {fileID: 21300000, guid: d4254f7849e9d9d4fa8dc3a013caedb9, type: 3}
   mineMarker: {fileID: 21300000, guid: 4544f00e5c2c90641a617bc8c0afc6a6, type: 3}
+  gridTint: {r: 0.1, g: 0.05, b: 0, a: 0.7}
 --- !u!4 &1224072702
 Transform:
   m_ObjectHideFlags: 0
@@ -1139,6 +1148,15 @@ MonoBehaviour:
   fenceYBroken: {fileID: 21300000, guid: 0cfbbdf7bc56eb94fa84099b40c37943, type: 3}
   farmhouse: {fileID: 21300000, guid: b2fd5d7b36e79704594bfbda3cf7fcf7, type: 3}
   tank: {fileID: 21300000, guid: 1cd00dca80d401241901a8793416d055, type: 3}
+  scatterTrees:
+  - {fileID: 21300000, guid: c3af74e88f0c8dc4a8d808010537c8bf, type: 3}
+  scatterBushes:
+  - {fileID: 21300000, guid: e4dd0b92ea172b34ca8685f3efd3a1a1, type: 3}
+  scatterTufts:
+  - {fileID: 21300000, guid: 95f0ad9048d92d44581a8eb65193bfef, type: 3}
+  scatterRubble:
+  - {fileID: 21300000, guid: e6c7119ae3775b340be1c3ee62df0b34, type: 3}
+  scatterCount: 46
   seed: 7
   brokenChance: 0.22
 --- !u!4 &2089360943
