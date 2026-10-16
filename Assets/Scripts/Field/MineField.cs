@@ -31,6 +31,11 @@ namespace MinefieldClerk.Field
         [SerializeField] private int radius = 1;
         [Tooltip("-1 = new random layout every time")]
         [SerializeField] private int seed = -1;
+        [Header("Fairness")]
+        [Tooltip("After the first probe, remove just enough mines that the whole field can be cleared by deduction alone (no guessing)")]
+        [SerializeField] private bool noGuessing = true;
+        [Tooltip("How many fix-up attempts the fairness pass may make")]
+        [SerializeField] private int maxRepairs = 200;
         [Header("Fuse")]
         [SerializeField] private float fuseMin = 1.5f;
         [SerializeField] private float fuseMax = 3f;
@@ -64,7 +69,6 @@ namespace MinefieldClerk.Field
         /// <summary>Mines were moved after generation (the safe first probe).</summary>
         public event Action LayoutChanged;
 
-        public int Radius => radius;
         public int MineCount { get; private set; }
         public int ProbedCount => probed.Count;
         public int FlagCount => flags.Count;
@@ -72,11 +76,6 @@ namespace MinefieldClerk.Field
         public int DudCount => duds.Count;
         public int ArmedCount => armed.Count;
         public bool HasArmed => armed.Count > 0;
-
-        public void Configure(FieldBuilder fieldBuilder)
-        {
-            field = fieldBuilder;
-        }
 
         public void Generate()
         {
@@ -112,21 +111,19 @@ namespace MinefieldClerk.Field
             return Mathf.Abs(x - start.x) <= startSafeRadius && Mathf.Abs(y - start.y) <= startSafeRadius;
         }
 
-        private static Vector3Int Key(Vector3Int cell)
-        {
-            return new Vector3Int(cell.x, cell.y, 0);
-        }
-
         public bool IsMine(Vector3Int cell)
         {
             return field.IsWalkable(cell) && mines[cell.x, cell.y];
         }
 
-        public bool IsFlagged(Vector3Int cell) { return flags.Contains(Key(cell)); }
-        public bool IsProbed(Vector3Int cell) { return probed.ContainsKey(Key(cell)); }
-        public bool IsExploded(Vector3Int cell) { return exploded.Contains(Key(cell)); }
-        public bool IsArmed(Vector3Int cell) { return armed.ContainsKey(Key(cell)); }
-        public bool IsDud(Vector3Int cell) { return duds.Contains(Key(cell)); }
+        /// <summary>The cell already has an outcome (probed, burning, exploded or a dud): it cannot be probed or flagged any more.</summary>
+        private bool IsResolved(Vector3Int cell)
+        {
+            return probed.ContainsKey(cell) || exploded.Contains(cell) || armed.ContainsKey(cell) || duds.Contains(cell);
+        }
+
+        public bool IsProbed(Vector3Int cell) { return probed.ContainsKey(cell.Flat()); }
+        public bool IsExploded(Vector3Int cell) { return exploded.Contains(cell.Flat()); }
 
         private void Update()
         {
@@ -159,7 +156,7 @@ namespace MinefieldClerk.Field
         /// <summary>Makes one burning mine explode now (a dud included).</summary>
         public void Detonate(Vector3Int cell)
         {
-            Resolve(Key(cell), true);
+            Resolve(cell.Flat(), true);
         }
 
         /// <summary>The player moved: every burning mine explodes now, duds included.</summary>
@@ -214,6 +211,56 @@ namespace MinefieldClerk.Field
             LayoutChanged?.Invoke();
         }
 
+        /// <summary>
+        /// Plays the layout with the deduction solver from the first probe. While some safe cells cannot be proven,
+        /// removes a mine next to one of them and tries again. Mines are only ever removed, never added.
+        /// </summary>
+        private void MakeSolvable(Vector3Int start)
+        {
+            var walkable = new bool[field.Width, field.Height];
+            for (int x = 0; x < field.Width; x++)
+                for (int y = 0; y < field.Height; y++)
+                    walkable[x, y] = field.IsWalkable(new Vector3Int(x, y, 0));
+
+            var unresolved = new List<Vector2Int>();
+            var candidates = new List<Vector2Int>();
+            var origin = new Vector2Int(start.x, start.y);
+            int budget = Mathf.Max(3, MineCount / 3);
+            int removed = 0;
+            int left = 0;
+
+            for (int attempt = 0; attempt < maxRepairs; attempt++)
+            {
+                left = MineSolver.Solve(mines, walkable, origin, radius, unresolved);
+                if (left == 0 || removed >= budget) break;
+
+                Vector2Int stuck = unresolved[rng.Next(unresolved.Count)];
+                candidates.Clear();
+                for (int reach = radius; reach <= radius + 1 && candidates.Count == 0; reach++)
+                {
+                    for (int dx = -reach; dx <= reach; dx++)
+                    {
+                        for (int dy = -reach; dy <= reach; dy++)
+                        {
+                            int x = stuck.x + dx, y = stuck.y + dy;
+                            if (x < 0 || y < 0 || x >= field.Width || y >= field.Height) continue;
+                            if (mines[x, y]) candidates.Add(new Vector2Int(x, y));
+                        }
+                    }
+                }
+                if (candidates.Count == 0) continue;
+
+                Vector2Int pick = candidates[rng.Next(candidates.Count)];
+                mines[pick.x, pick.y] = false;
+                MineCount--;
+                removed++;
+            }
+
+            if (left != 0) left = MineSolver.Solve(mines, walkable, origin, radius, null);
+            if (removed > 0) LayoutChanged?.Invoke();
+            Debug.Log("[MineField] fairness pass: removed " + removed + " mine(s), " + left + " safe cell(s) still need a guess, " + MineCount + " mines left");
+        }
+
         public int CountAround(Vector3Int cell)
         {
             int count = 0;
@@ -230,14 +277,15 @@ namespace MinefieldClerk.Field
 
         public ProbeOutcome Probe(Vector3Int cell)
         {
-            cell = Key(cell);
+            cell = cell.Flat();
             if (!field.IsWalkable(cell)) return ProbeOutcome.Invalid;
-            if (flags.Contains(cell) || probed.ContainsKey(cell) || exploded.Contains(cell) || armed.ContainsKey(cell) || duds.Contains(cell)) return ProbeOutcome.Blocked;
+            if (flags.Contains(cell) || IsResolved(cell)) return ProbeOutcome.Blocked;
 
             if (!firstProbeDone)
             {
                 firstProbeDone = true;
                 MakeStartSafe(cell);
+                if (noGuessing) MakeSolvable(cell);
             }
 
             if (mines[cell.x, cell.y]) return Arm(cell);
@@ -262,18 +310,18 @@ namespace MinefieldClerk.Field
         /// </summary>
         public ProbeOutcome StepOn(Vector3Int cell)
         {
-            cell = Key(cell);
+            cell = cell.Flat();
             if (!field.IsWalkable(cell)) return ProbeOutcome.Invalid;
             if (!mines[cell.x, cell.y]) return ProbeOutcome.Safe;
-            if (flags.Contains(cell) || probed.ContainsKey(cell) || exploded.Contains(cell) || armed.ContainsKey(cell) || duds.Contains(cell)) return ProbeOutcome.Blocked;
+            if (flags.Contains(cell) || IsResolved(cell)) return ProbeOutcome.Blocked;
             return Arm(cell);
         }
 
         /// <summary>Places or removes a flag. Returns false when the tile cannot hold a flag.</summary>
         public bool ToggleFlag(Vector3Int cell)
         {
-            cell = Key(cell);
-            if (!field.IsWalkable(cell) || probed.ContainsKey(cell) || exploded.Contains(cell) || armed.ContainsKey(cell) || duds.Contains(cell)) return false;
+            cell = cell.Flat();
+            if (!field.IsWalkable(cell) || IsResolved(cell)) return false;
 
             if (flags.Remove(cell))
             {
@@ -285,6 +333,18 @@ namespace MinefieldClerk.Field
                 FlagChanged?.Invoke(cell, true);
             }
             return true;
+        }
+
+        /// <summary>Counts flags on real mines and flags on safe ground (for the debrief).</summary>
+        public void Tally(out int correct, out int wrong)
+        {
+            correct = 0;
+            wrong = 0;
+            foreach (Vector3Int f in flags)
+            {
+                if (mines[f.x, f.y]) correct++;
+                else wrong++;
+            }
         }
 
         /// <summary>Dev only: every mine that has not been probed yet.</summary>

@@ -79,18 +79,17 @@ namespace MinefieldClerk.EditorTools
                 new[] { Load(PropDir + "/rubble.png") });
             EditorUtility.SetDirty(decor);
 
-            // ---- field view art: probed shading, radar digits, flag, crater, blast, mine marker
+            // ---- field view art: radar digits, flag, scorch mark, blast, dug craters, mines
             var view = Object.FindAnyObjectByType<MineFieldView>();
             if (view != null)
             {
-                var digits = new Sprite[9];
-                for (int i = 0; i < digits.Length; i++) digits[i] = Load("Assets/Art/Radar/digit_" + i + ".png");
-                var blast = new Sprite[6];
-                for (int i = 0; i < blast.Length; i++) blast[i] = Load(TileDir + "/blast_" + (i + 1) + ".png");
-                view.Configure(field, mines, Load(TileDir + "/probed.png"), digits,
-                    Load("Assets/Art/Objects/Test/flag.png"), Load(TileDir + "/crater.png"), blast,
-                    Load("Assets/Art/Objects/Test/mine_debug.png"));
-                view.ConfigureVariant(Load(TileDir + "/probed_b.png"));
+                view.Configure(
+                    LoadSeries("Assets/Art/Radar/digit_", 0, 9),
+                    Load("Assets/Art/Objects/Test/flag.png"),
+                    Load(TileDir + "/crater.png"),
+                    LoadSeries(TileDir + "/blast_", 1, 6),
+                    LoadSeries(TileDir + "/dug_", 1, 3),
+                    LoadSeries("Assets/Art/Objects/Mines/mine_", 1, 4));
                 EditorUtility.SetDirty(view);
             }
 
@@ -98,6 +97,18 @@ namespace MinefieldClerk.EditorTools
             EditorSceneManager.SaveScene(scene);
             AssetDatabase.SaveAssets();
             Debug.Log("[Art] Applied art to " + ScenePath);
+        }
+
+        /// <summary>Loads prefix + first .. prefix + (first + count - 1) + ".png".</summary>
+        private static Sprite[] LoadSeries(string prefix, int first, int count)
+        {
+            var sprites = new Sprite[count];
+            for (int i = 0; i < count; i++)
+            {
+                sprites[i] = AssetDatabase.LoadAssetAtPath<Sprite>(prefix + (first + i) + ".png");
+                if (sprites[i] == null) Debug.LogWarning("[Art] Missing sprite " + prefix + (first + i) + ".png");
+            }
+            return sprites;
         }
 
         private static Tile MakeTile(string name, Sprite sprite)

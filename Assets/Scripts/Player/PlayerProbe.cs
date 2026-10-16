@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using MinefieldClerk.DevTools;
+using MinefieldClerk.Day;
 using MinefieldClerk.Field;
 
 namespace MinefieldClerk.Player
@@ -28,38 +30,29 @@ namespace MinefieldClerk.Player
         private void OnEnable()
         {
             mines.MineArmed += OnArmed;
-            mines.MineTriggered += OnResolved;
-            mines.MineDud += OnResolved;
             mines.MineTriggered += OnTriggered;
+            mines.MineDud += OnResolved;
             mines.Regenerated += OnRegenerated;
         }
 
         private void OnDisable()
         {
             mines.MineArmed -= OnArmed;
-            mines.MineTriggered -= OnResolved;
-            mines.MineDud -= OnResolved;
             mines.MineTriggered -= OnTriggered;
+            mines.MineDud -= OnResolved;
             mines.Regenerated -= OnRegenerated;
         }
 
         private void OnArmed(Vector3Int cell, float fuse)
         {
-            if (cell.x == player.CurrentCell.x && cell.y == player.CurrentCell.y)
-            {
-                underFoot.Add(new Vector3Int(cell.x, cell.y, 0));
-            }
-            else
-            {
-                remote[new Vector3Int(cell.x, cell.y, 0)] = player.transform.position;
-            }
+            if (cell.Flat() == player.CurrentCell.Flat()) underFoot.Add(cell.Flat());
+            else remote[cell.Flat()] = player.transform.position;
         }
 
         private void OnResolved(Vector3Int cell)
         {
-            Vector3Int key = new Vector3Int(cell.x, cell.y, 0);
-            underFoot.Remove(key);
-            remote.Remove(key);
+            underFoot.Remove(cell.Flat());
+            remote.Remove(cell.Flat());
         }
 
         private void OnRegenerated()
@@ -71,6 +64,7 @@ namespace MinefieldClerk.Player
 
         private void OnTriggered(Vector3Int cell)
         {
+            OnResolved(cell);
             health.Hit();
         }
 
@@ -95,7 +89,7 @@ namespace MinefieldClerk.Player
                 scratch.Clear();
                 foreach (Vector3Int c in underFoot)
                 {
-                    if (c.x != now.x || c.y != now.y) scratch.Add(c);
+                    if (c != now.Flat()) scratch.Add(c);
                 }
                 foreach (Vector3Int c in scratch) mines.Detonate(c);
             }
@@ -112,7 +106,8 @@ namespace MinefieldClerk.Player
                 foreach (Vector3Int c in scratch) mines.Detonate(c);
             }
 
-            if (health.Dead) return;
+            DayManager day = DayManager.Instance;
+            if (health.Dead || (day != null && !day.Playing)) return;
 
             Keyboard kb = Keyboard.current;
             Gamepad pad = Gamepad.current;
@@ -124,7 +119,7 @@ namespace MinefieldClerk.Player
 
             // Mouse: right click probes, middle click flags, the hovered neighbour cell.
             Mouse mouse = Mouse.current;
-            if (mouse != null && player.HoverValid && !MinefieldClerk.DevTools.DevHud.IsOverUi(mouse.position.ReadValue()))
+            if (mouse != null && player.HoverValid && !DevHud.IsOverUi(mouse.position.ReadValue()))
             {
                 if (mouse.rightButton.wasPressedThisFrame)
                 {
@@ -141,7 +136,15 @@ namespace MinefieldClerk.Player
             if (probe)
             {
                 player.FaceCell(cell);
-                mines.Probe(cell);
+                if (day != null && !day.CanProbe)
+                {
+                    day.Notify("Detector battery is dead. Flag from memory.");
+                }
+                else
+                {
+                    ProbeOutcome result = mines.Probe(cell);
+                    if (day != null && (result == ProbeOutcome.Safe || result == ProbeOutcome.Armed)) day.SpendProbe();
+                }
             }
             else if (flag)
             {
