@@ -1,10 +1,10 @@
 fileFormatVersion: 2
-guid: c023d229c8f23864ab4d913e7edf6fda
+guid: 59613a4ba6c3cfc4b9ab105da52a8d27
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: 263593787910774533
-    second: probed_b_0
+      213: 2058343548382947412
+    second: mine_2_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -49,8 +49,8 @@ TextureImporter:
   spriteMode: 1
   spriteExtrude: 1
   spriteMeshType: 0
-  alignment: 0
-  spritePivot: {x: 0.5, y: 0.5}
+  alignment: 7
+  spritePivot: {x: 0.5, y: 0}
   spritePixelsToUnits: 32
   spriteBorder: {x: 0, y: 0, z: 0, w: 0}
   spriteGenerateFallbackPhysicsShape: 1
@@ -113,13 +113,13 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: probed_b_0
+      name: mine_2_0
       rect:
         serializedVersion: 2
         x: 0
         y: 0
-        width: 32
-        height: 16
+        width: 20
+        height: 14
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
@@ -128,8 +128,8 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 50fdb6d472978a300800000000000000
-      internalID: 263593787910774533
+      spriteID: 458251b3d84b09c10800000000000000
+      internalID: 2058343548382947412
       vertices: []
       indices: 
       edges: []

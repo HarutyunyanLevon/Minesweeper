@@ -6,7 +6,6 @@ namespace MinefieldClerk.Field
     /// <summary>
     /// Builds the ground of a rectangular minefield (in isometric cells) and answers walkability questions.
     /// The playable plot is cells (0,0) to (width-1, height-1), surrounded by a one-cell border ring and some scenery.
-    /// M1 uses placeholder tiles; mines and clues arrive in M2.
     /// </summary>
     public class FieldBuilder : MonoBehaviour
     {
@@ -19,33 +18,18 @@ namespace MinefieldClerk.Field
         [SerializeField] private int scenery = 8;
         [Tooltip("-1 = new random field on every play")]
         [SerializeField] private int seed = -1;
-        [Tooltip("Turn off when a session component builds the field itself")]
-        [SerializeField] private bool buildOnAwake = true;
 
         public int Width => fieldWidth;
         public int Height => fieldHeight;
         public Vector3Int StartCell => new Vector3Int(fieldWidth / 2, 0, 0);
 
-        /// <summary>Used by the editor scene builder to wire up the placeholder tiles.</summary>
+        /// <summary>Used by the editor art menu to wire up the tiles.</summary>
         public void Configure(Tilemap groundMap, Tile[] grass, Tile dirt, Tile border)
         {
             ground = groundMap;
             grassTiles = grass;
             dirtTile = dirt;
             borderTile = border;
-        }
-
-        public void SetBuildOnAwake(bool value)
-        {
-            buildOnAwake = value;
-        }
-
-        private void Awake()
-        {
-            if (Application.isPlaying && buildOnAwake)
-            {
-                Build();
-            }
         }
 
         public bool IsWalkable(Vector3Int cell)

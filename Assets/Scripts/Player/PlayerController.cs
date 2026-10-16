@@ -21,6 +21,8 @@ namespace MinefieldClerk.Player
             new Vector2Int(-1, 1), new Vector2Int(-1, 0), new Vector2Int(-1, -1), new Vector2Int(0, -1),
         };
 
+        private const float CellAspect = PixelConstants.CellHeight / PixelConstants.CellWidth;
+
         [SerializeField] private FieldBuilder field;
         [SerializeField] private SpriteRenderer body;
         [Tooltip("Horizontal screen speed in world units per second (32 units = 1 tile width)")]
@@ -36,11 +38,10 @@ namespace MinefieldClerk.Player
         /// <summary>Isometric cell the player's feet are in.</summary>
         public Vector3Int CurrentCell { get; private set; }
 
-        /// <summary>The neighbouring cell the player is facing: where probing and flagging act.</summary>
         /// <summary>Facing as a cell offset (each component -1..1).</summary>
         public Vector2Int Facing => facing;
 
-        public Vector3Int FacingCell => new Vector3Int(CurrentCell.x + facing.x, CurrentCell.y + facing.y, 0);
+        private Vector3Int FacingCell => new Vector3Int(CurrentCell.x + facing.x, CurrentCell.y + facing.y, 0);
 
         /// <summary>Cell under the mouse pointer.</summary>
         public Vector3Int HoverCell { get; private set; }
@@ -98,8 +99,7 @@ namespace MinefieldClerk.Player
 
                 if (input.sqrMagnitude > 0.0001f)
                 {
-                    float ratio = PixelConstants.CellHeight / PixelConstants.CellWidth;
-                    Vector2 delta = new Vector2(input.x, input.y * ratio) * (speed * SpeedMultiplier * Time.deltaTime);
+                    Vector2 delta = new Vector2(input.x, input.y * CellAspect) * (speed * SpeedMultiplier * Time.deltaTime);
                     Vector2 before = feet;
                     Move(delta);
                     if (walkTarget.HasValue && (feet - before).sqrMagnitude < 1e-10f)
@@ -152,7 +152,7 @@ namespace MinefieldClerk.Player
 
             if (Frozen) return;
             // Left click (or hold) walks to that point.
-            bool overUi = MinefieldClerk.DevTools.DevHud.IsOverUi(screen);
+            bool overUi = DevTools.DevHud.IsOverUi(screen);
             if (!overUi && pointerOnField && (mouse.leftButton.wasPressedThisFrame || mouse.leftButton.isPressed))
             {
                 walkTarget = new Vector2(world.x, world.y);
@@ -169,8 +169,7 @@ namespace MinefieldClerk.Player
                 walkTarget = null;
                 return Vector2.zero;
             }
-            float ratio = PixelConstants.CellHeight / PixelConstants.CellWidth;
-            return new Vector2(d.x, d.y / ratio).normalized;
+            return new Vector2(d.x, d.y / CellAspect).normalized;
         }
 
         private void Move(Vector2 delta)
