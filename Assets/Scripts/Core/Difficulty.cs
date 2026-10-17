@@ -56,6 +56,12 @@ namespace MinefieldClerk
         /// <summary>The daily quota never exceeds this share of the mines.</summary>
         public float quotaMaxShare = 0.8f;
 
+        /// <summary>A base amount the player receives, scaled by <see cref="moneyEarn"/>.</summary>
+        public int Earned(int amount) { return Mathf.RoundToInt(amount * moneyEarn); }
+
+        /// <summary>A base amount the player pays (fines, medicine), scaled by <see cref="moneySpend"/>.</summary>
+        public int Spent(int amount) { return Mathf.RoundToInt(amount * moneySpend); }
+
         public FieldSize PickSize(System.Random rng)
         {
             return sizes[rng.Next(sizes.Length)];

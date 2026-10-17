@@ -78,6 +78,9 @@ namespace MinefieldClerk.Player
         public float SpeedMultiplier { get; set; } = 1f;
         public bool Frozen { get; set; }
 
+        /// <summary>True while a hold action (defusing, collecting) roots the deminer. Separate from <see cref="Frozen"/>, which health and the debrief own.</summary>
+        public bool Busy { get; set; }
+
         private void Awake()
         {
             // Depth sorting by the feet: same order as the props, ordered by pivot height, so the deminer
@@ -107,7 +110,8 @@ namespace MinefieldClerk.Player
         {
             UpdateMouse();
             IsMoving = false;
-            if (!Frozen)
+            if (Busy) walkTarget = null;   // a hold action roots the deminer and drops a click-walk
+            if (!Frozen && !Busy)
             {
                 Vector2 input = ReadInput();
                 if (input.sqrMagnitude > InputDeadZoneSqr)

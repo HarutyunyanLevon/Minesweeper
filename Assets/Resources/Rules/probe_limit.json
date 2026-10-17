@@ -1,0 +1,11 @@
+{
+  "id": "probe_limit",
+  "title": "ECONOMY OF EXAMINATION",
+  "text": "The detector serves every deminer of the Republic. Examine no more than {probeCap} plots per shift, that all may share it. Each examination beyond the limit is fined {probeFine}. Thrift is patriotism.",
+
+  "firstDay": 1,
+  "chance": 1.0,
+
+  "probeCapPerMine": 2.5,
+  "probeFine": 5
+}

@@ -29,6 +29,8 @@ namespace MinefieldClerk.Field
 
         private static readonly Color ArmedFlash = new Color(1f, 0.35f, 0.3f);
         private static readonly Color DudColor = new Color(0.55f, 0.55f, 0.6f);
+        private static readonly Color DefusedTint = new Color(0.55f, 1f, 0.6f);   // multiplies the flag diamond of a defused mine
+        private const string FlagCellName = "FlagCell";
         private static readonly Color32 EdgeColor = new Color32(255, 255, 255, 255);
         private static readonly Color FlagCellOutline = new Color(1f, 0.84f, 0.25f, 0.92f);
         private static readonly Color FlagCellFill = new Color(1f, 0.84f, 0.25f, 0.24f);
@@ -74,6 +76,7 @@ namespace MinefieldClerk.Field
         // Everything spawned per cell, so it can be removed again.
         private readonly Dictionary<Vector3Int, GameObject> flags = new Dictionary<Vector3Int, GameObject>();
         private readonly Dictionary<Vector3Int, GameObject> armedMarkers = new Dictionary<Vector3Int, GameObject>();
+        private readonly Dictionary<Vector3Int, GameObject> dudMarkers = new Dictionary<Vector3Int, GameObject>();
         private readonly Dictionary<Vector3Int, GameObject> revealedMines = new Dictionary<Vector3Int, GameObject>();
         private readonly Dictionary<Vector3Int, GameObject> revealedNumbers = new Dictionary<Vector3Int, GameObject>();
 
@@ -102,6 +105,8 @@ namespace MinefieldClerk.Field
             mines.MineTriggered += OnMineTriggered;
             mines.MineArmed += OnMineArmed;
             mines.MineDud += OnMineDud;
+            mines.MineDefused += OnMineDefused;
+            mines.MineCollected += OnMineCollected;
             mines.LayoutChanged += OnLayoutChanged;
         }
 
@@ -113,6 +118,8 @@ namespace MinefieldClerk.Field
             mines.MineTriggered -= OnMineTriggered;
             mines.MineArmed -= OnMineArmed;
             mines.MineDud -= OnMineDud;
+            mines.MineDefused -= OnMineDefused;
+            mines.MineCollected -= OnMineCollected;
             mines.LayoutChanged -= OnLayoutChanged;
         }
 
@@ -122,6 +129,7 @@ namespace MinefieldClerk.Field
             for (int i = transform.childCount - 1; i >= 0; i--) Destroy(transform.GetChild(i).gameObject);
             flags.Clear();
             armedMarkers.Clear();
+            dudMarkers.Clear();
             revealedMines.Clear();
             revealedNumbers.Clear();
             showMines = false;
@@ -154,7 +162,7 @@ namespace MinefieldClerk.Field
             root.transform.SetParent(transform, false);
             SpriteRenderer flag = Spawn("Flag", flagSprite, Center(cell), PixelConstants.SortingOrderDefault, root.transform);
             flag.spriteSortPoint = SpriteSortPoint.Pivot;
-            Spawn("FlagCell", FlagCellSprite(), Center(cell) + new Vector3(0f, FlagCellOffsetY, 0f), OrderFlagCell, root.transform);
+            Spawn(FlagCellName, FlagCellSprite(), Center(cell) + new Vector3(0f, FlagCellOffsetY, 0f), OrderFlagCell, root.transform);
             // pole and mound stay put; only the cloth waves (rebuilt pixel by pixel)
             MinefieldClerk.Ambience.FlagCloth.Create(flag);
             flags[cell.Flat()] = root;
@@ -188,8 +196,26 @@ namespace MinefieldClerk.Field
             if (armedMarkers.TryGetValue(key, out GameObject go) && go != null)
             {
                 go.GetComponent<SpriteRenderer>().color = DudColor;
+                dudMarkers[key] = go;   // stays on the ground until it is collected
             }
             armedMarkers.Remove(key);
+        }
+
+        /// <summary>The flag diamond of a defused mine turns green: the mine under it is safe.</summary>
+        private void OnMineDefused(Vector3Int cell)
+        {
+            if (!flags.TryGetValue(cell.Flat(), out GameObject root) || root == null) return;
+            Transform diamond = root.transform.Find(FlagCellName);
+            if (diamond != null) diamond.GetComponent<SpriteRenderer>().color = DefusedTint;
+        }
+
+        /// <summary>A collected mine (or dud) leaves a dug hole.</summary>
+        private void OnMineCollected(Vector3Int cell, bool wasDud)
+        {
+            Release(flags, cell);
+            Release(dudMarkers, cell);
+            Release(revealedMines, cell);
+            Spawn("Dug", PickFor(dugVariants, cell), Center(cell), OrderProbed);
         }
 
         private void OnMineTriggered(Vector3Int cell)

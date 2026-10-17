@@ -14,6 +14,7 @@ namespace MinefieldClerk.Player
     /// A burning mine explodes after 1.5-3 s unless it is a dud (10%).
     /// A mine under the player's feet explodes at once when the player leaves its tile (moving inside the tile is fine).
     /// A mine armed by probing a different cell explodes at once when the player moves at all.
+    /// Also adds the MineWork component (hold E: defuse and collect on days with the collect-mines rule).
     /// </summary>
     public class PlayerProbe : MonoBehaviour
     {
@@ -22,6 +23,7 @@ namespace MinefieldClerk.Player
         [SerializeField] private PlayerHealth health;
 
         private DeminerSprites sprites;
+        private MineWork work;
 
         private readonly HashSet<Vector3Int> underFoot = new HashSet<Vector3Int>();
         private readonly Dictionary<Vector3Int, Vector3> remote = new Dictionary<Vector3Int, Vector3>();
@@ -32,6 +34,12 @@ namespace MinefieldClerk.Player
         private void OnEnable()
         {
             if (sprites == null) sprites = player.GetComponent<DeminerSprites>();
+            if (work == null)
+            {
+                work = GetComponent<MineWork>();
+                if (work == null) work = gameObject.AddComponent<MineWork>();
+                work.Setup(player, mines, health);
+            }
             mines.MineArmed += OnArmed;
             mines.MineTriggered += OnTriggered;
             mines.MineDud += OnResolved;
@@ -110,7 +118,7 @@ namespace MinefieldClerk.Player
             }
 
             DayManager day = DayManager.Instance;
-            if (health.Dead || (day != null && !day.Playing)) return;
+            if (health.Dead || (day != null && !day.CanAct) || work.Busy) return;
 
             Keyboard kb = Keyboard.current;
             Gamepad pad = Gamepad.current;
@@ -147,7 +155,7 @@ namespace MinefieldClerk.Player
                 {
                     if (sprites != null) sprites.PlayAction("probe");
                     ProbeOutcome result = mines.Probe(cell);
-                    if (day != null && (result == ProbeOutcome.Safe || result == ProbeOutcome.Armed)) day.SpendProbe();
+                    if (day != null && (result == ProbeOutcome.Safe || result == ProbeOutcome.Armed)) day.RegisterProbe();
                 }
             }
             else if (flag)

@@ -12,6 +12,23 @@ namespace MinefieldClerk.Field
         Armed      // the probe found a mine: its fuse is now burning
     }
 
+    /// <summary>What a hold-to-act on a cell would do. The answer never reveals whether an unflagged cell holds a mine.</summary>
+    public enum CellWork
+    {
+        None,        // nothing to do here (outside the field, already probed, exploded or collected)
+        NeedsFlag,   // an untouched cell: flag it first
+        Armed,       // a burning mine: too late
+        Defuse,      // flagged and not yet defused
+        Collect      // a defused mine or an exposed dud
+    }
+
+    public enum DefuseOutcome
+    {
+        Invalid,
+        Defused,     // the flagged mine is safe now
+        NothingThere // the flag was on safe ground; the flag is removed
+    }
+
     /// <summary>
     /// Hidden mines, probe results and flags for one field. Pure game state: all visuals live in MineFieldView.
     /// Probing a mine arms it: the mine is shown, then after a random fuse (fuseMin..fuseMax seconds) it explodes,
@@ -19,6 +36,8 @@ namespace MinefieldClerk.Field
     /// The spawn cell and its 8 neighbours are mine-free from the start. Probing elsewhere is not guaranteed safe and never reshuffles mines.
     /// Walking never triggers mines; only probing does. A radar number is the count of mines within `radius`
     /// cells (8 neighbours for radius 1) and is stamped only on tiles the player probed.
+    /// Collect chain (days with the collect-mines rule): a flagged mine can be defused, a defused mine or an exposed
+    /// dud can be collected. A probed mine is armed and can never be defused. Collected mines stay counted in the radar numbers.
     /// </summary>
     public class MineField : MonoBehaviour
     {
@@ -50,6 +69,8 @@ namespace MinefieldClerk.Field
         private readonly HashSet<Vector3Int> flags = new HashSet<Vector3Int>();
         private readonly HashSet<Vector3Int> exploded = new HashSet<Vector3Int>();
         private readonly HashSet<Vector3Int> duds = new HashSet<Vector3Int>();
+        private readonly HashSet<Vector3Int> defused = new HashSet<Vector3Int>();
+        private readonly HashSet<Vector3Int> collected = new HashSet<Vector3Int>();
         private readonly Dictionary<Vector3Int, Fuse> armed = new Dictionary<Vector3Int, Fuse>();
         private readonly List<Vector3Int> due = new List<Vector3Int>();
         private System.Random rng = new System.Random();
@@ -69,6 +90,10 @@ namespace MinefieldClerk.Field
         public event Action<Vector3Int, float> MineArmed;
         /// <summary>A burning mine turned out to be a dud and will never explode.</summary>
         public event Action<Vector3Int> MineDud;
+        /// <summary>A flagged mine was defused.</summary>
+        public event Action<Vector3Int> MineDefused;
+        /// <summary>A defused mine or a dud was collected. Arguments: cell, true when it was a dud.</summary>
+        public event Action<Vector3Int, bool> MineCollected;
         /// <summary>Mines were moved after generation (the safe first probe).</summary>
         public event Action LayoutChanged;
 
@@ -77,6 +102,7 @@ namespace MinefieldClerk.Field
         public int FlagCount => flags.Count;
         public int ExplodedCount => exploded.Count;
         public int DudCount => duds.Count;
+        public int CollectedCount => collected.Count;
         public int ArmedCount => armed.Count;
         public bool HasArmed => armed.Count > 0;
 
@@ -94,6 +120,8 @@ namespace MinefieldClerk.Field
             flags.Clear();
             exploded.Clear();
             duds.Clear();
+            defused.Clear();
+            collected.Clear();
             armed.Clear();
             firstProbeDone = false;
             MineCount = 0;
@@ -135,10 +163,14 @@ namespace MinefieldClerk.Field
             return field.IsWalkable(cell) && mines[cell.x, cell.y];
         }
 
-        /// <summary>The cell already has an outcome (probed, burning, exploded or a dud): it cannot be probed or flagged any more.</summary>
+        /// <summary>
+        /// The cell already has an outcome (probed, burning, exploded, a dud, defused or collected):
+        /// it cannot be probed, flagged or unflagged any more, and walking onto it is safe.
+        /// </summary>
         private bool IsResolved(Vector3Int cell)
         {
-            return probed.ContainsKey(cell) || exploded.Contains(cell) || armed.ContainsKey(cell) || duds.Contains(cell);
+            return probed.ContainsKey(cell) || exploded.Contains(cell) || armed.ContainsKey(cell) || duds.Contains(cell)
+                || defused.Contains(cell) || collected.Contains(cell);
         }
 
         public bool IsProbed(Vector3Int cell) { return probed.ContainsKey(cell.Flat()); }
@@ -353,6 +385,62 @@ namespace MinefieldClerk.Field
             return true;
         }
 
+        /// <summary>What holding the action on this cell would do (see <see cref="CellWork"/>).</summary>
+        public CellWork WorkAt(Vector3Int cell)
+        {
+            cell = cell.Flat();
+            if (!field.IsWalkable(cell) || collected.Contains(cell)) return CellWork.None;
+            if (armed.ContainsKey(cell)) return CellWork.Armed;
+            if (duds.Contains(cell) || defused.Contains(cell)) return CellWork.Collect;
+            if (flags.Contains(cell)) return CellWork.Defuse;
+            if (probed.ContainsKey(cell) || exploded.Contains(cell)) return CellWork.None;
+            return CellWork.NeedsFlag;
+        }
+
+        /// <summary>Defuses a flagged mine. On safe ground the flag is removed instead (the time was wasted).</summary>
+        public DefuseOutcome Defuse(Vector3Int cell)
+        {
+            cell = cell.Flat();
+            if (WorkAt(cell) != CellWork.Defuse) return DefuseOutcome.Invalid;
+
+            if (!mines[cell.x, cell.y])
+            {
+                flags.Remove(cell);
+                FlagChanged?.Invoke(cell, false);
+                return DefuseOutcome.NothingThere;
+            }
+            defused.Add(cell);
+            MineDefused?.Invoke(cell);
+            return DefuseOutcome.Defused;
+        }
+
+        /// <summary>Takes a defused mine or an exposed dud out of the ground. Returns false when there is nothing to collect.</summary>
+        public bool Collect(Vector3Int cell)
+        {
+            cell = cell.Flat();
+            if (WorkAt(cell) != CellWork.Collect) return false;
+
+            bool wasDud = duds.Contains(cell);
+            collected.Add(cell);
+            if (flags.Remove(cell)) FlagChanged?.Invoke(cell, false);
+            MineCollected?.Invoke(cell, wasDud);
+            return true;
+        }
+
+        /// <summary>Exposed duds that were not collected (they count as located but still lie in the ground).</summary>
+        public int UncollectedDudCount
+        {
+            get
+            {
+                int count = 0;
+                foreach (Vector3Int cell in duds)
+                {
+                    if (!collected.Contains(cell)) count++;
+                }
+                return count;
+            }
+        }
+
         /// <summary>Counts flags on real mines and flags on safe ground (for the debrief).</summary>
         public void Tally(out int correct, out int wrong)
         {
@@ -373,7 +461,7 @@ namespace MinefieldClerk.Field
                 for (int y = 0; y < mines.GetLength(1); y++)
                 {
                     var cell = new Vector3Int(x, y, 0);
-                    if (mines[x, y] && !exploded.Contains(cell) && !armed.ContainsKey(cell) && !duds.Contains(cell)) yield return cell;
+                    if (mines[x, y] && !exploded.Contains(cell) && !armed.ContainsKey(cell) && !duds.Contains(cell) && !collected.Contains(cell)) yield return cell;
                 }
             }
         }

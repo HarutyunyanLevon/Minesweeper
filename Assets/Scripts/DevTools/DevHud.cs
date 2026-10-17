@@ -64,9 +64,9 @@ namespace MinefieldClerk.DevTools
             Vector3Int t = player.TargetCell;
             string text =
                 "State: " + state + "\n" +
-                "Probed " + mines.ProbedCount + "   Flags " + mines.FlagCount + "   Burning " + mines.ArmedCount + "   Exploded " + mines.ExplodedCount + "   Duds " + mines.DudCount + "   (mines in field: " + mines.MineCount + ")\n" +
+                "Probed " + mines.ProbedCount + "   Flags " + mines.FlagCount + "   Burning " + mines.ArmedCount + "   Exploded " + mines.ExplodedCount + "   Duds " + mines.DudCount + "   Collected " + mines.CollectedCount + "   (mines in field: " + mines.MineCount + ")\n" +
                 "Target cell " + t.x + ", " + t.y + "   Field " + (session != null ? session.Settings.name : UnknownField) + "\n" +
-                "WASD/LMB move   Space/RMB probe   F/MMB flag   R new field   F1 show mines   N show all numbers   G grid";
+                "WASD/LMB move   Space/RMB probe   F/MMB flag   hold E defuse/collect   B rulebook   R new field   F1 show mines   N show all numbers   G grid";
 
             GUI.Label(new Rect(Margin, TextTop, TextWidth, TextHeight), text, style);
 

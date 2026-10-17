@@ -3,10 +3,11 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using MinefieldClerk.Field;
 using MinefieldClerk.Player;
+using MinefieldClerk.Rules;
 
 namespace MinefieldClerk.Day
 {
-    public enum DayPhase { Playing, Debrief }
+    public enum DayPhase { Briefing, Playing, Debrief }
 
     /// <summary>
     /// M3 day loop: detector battery, end of day, debrief with pay per correct flag, quota bonus, injury and medicine.
@@ -16,6 +17,9 @@ namespace MinefieldClerk.Day
     /// no more probing, but flagging from memory and ending the day still work.
     /// Pay: flags on real mines (and located duds) are paid, quota met gives a bonus, a first hit costs medicine.
     /// A second hit ends the day; money carries over and a relative takes over the next day (family economy: M6).
+    /// M4 rules: every new field picks that day's rules (RuleSet). A briefing paper lists them before the shift
+    /// (Enter starts it), B opens the rulebook during the shift. The probe limit fines extra probes; the collect-mines
+    /// rule pays for collected mines instead of flags and fines located mines left in the ground. Fines are applied in the debrief.
     /// </summary>
     public class DayManager : MonoBehaviour
     {
@@ -27,6 +31,7 @@ namespace MinefieldClerk.Day
         private const float LowBatteryShare = 0.25f;            // below this the bar turns red
         private const float PanelWidth = 320f, PanelMargin = 20f, PanelTop = 10f, RowHeight = 30f;
         private const float Row2Top = 38f, BarTop = 70f, BarHeight = 20f, BarInset = 2f, LabelTop = 92f, HintTop = 118f, HintExtra = 40f;
+        private const float RuleRowTop = HintTop + RowHeight;
         private const float ToastWidth = 960f, ToastHeight = 40f, ToastBottomGap = 80f;
         private const float ToastSeconds = 2.5f;
         private const float DebriefWidth = 760f, DebriefHeight = 460f;
@@ -47,6 +52,22 @@ namespace MinefieldClerk.Day
         [Tooltip("Seconds after a fatal blast before the debrief opens")]
         [SerializeField] private float deathDelay = 2.5f;
 
+        private const string BookHeading = "BOOK OF REGULATIONS";
+        private const string BookBasicSection = "Basic decree of the Ministry";
+        private const string BookSpecialSection = "Directive of the day";
+        private const string BookStamp = "AMENDED";
+        private const string BookFooter = "A / D or arrow keys: turn the page      B: close the Book";
+        private const string BriefingHeading = "DAILY DIRECTIVE - DAY ";
+        private const string BriefingFooterPrefix = "Enter: begin the shift      The Republic is counting on you, citizen ";
+        private const string WorkHint = "Hold E: disarm / lift ordnance";
+
+        private readonly RulePaper paper = new RulePaper();
+        private readonly Rulebook rulebook = new Rulebook();
+        private RuleSet rules = RuleSet.Empty;
+        private int probesToday;
+        private int kitsUsed;
+        private bool showRulebook;
+
         private FieldSession session;
         private MineField mines;
         private PlayerHealth health;
@@ -65,6 +86,12 @@ namespace MinefieldClerk.Day
         public int Day { get; private set; } = 1;
         public int Money { get; private set; }
         public bool Playing => Phase == DayPhase.Playing;
+        /// <summary>The shift is running and the rulebook is shut: the deminer may act.</summary>
+        public bool CanAct => Playing && !showRulebook;
+        /// <summary>The rules in force today.</summary>
+        public RuleSet Rules => rules;
+        /// <summary>Defuse kits still in the bag (0 on days without the collect-mines rule).</summary>
+        public int KitsLeft => rules.CollectMines ? Mathf.Max(0, rules.DefuseKits - kitsUsed) : 0;
         public bool BatteryEmpty => battery <= 0f;
         /// <summary>Radar: detector battery length for the current difficulty.</summary>
         private float MaxBattery => session.Settings.batterySeconds * session.Settings.radarBattery;
@@ -78,12 +105,14 @@ namespace MinefieldClerk.Day
             {
                 DifficultySettings s = session.Settings;
                 int wanted = s.quotaBase + s.quotaPerDay * (Day - 1);
-                return Mathf.Min(wanted, Mathf.RoundToInt(s.mines * s.quotaMaxShare));
+                int maxMines = Mathf.RoundToInt(s.mines * s.quotaMaxShare);
+                // The collect-mines rule sets its own quota (mines to deliver) instead of the flag quota.
+                return rules.CollectMines ? Mathf.Min(rules.CollectQuota, maxMines) : Mathf.Min(wanted, maxMines);
             }
         }
 
-        private int Earned(int amount) { return Mathf.RoundToInt(amount * session.Settings.moneyEarn); }
-        private int Spent(int amount) { return Mathf.RoundToInt(amount * session.Settings.moneySpend); }
+        private int Earned(int amount) { return session.Settings.Earned(amount); }
+        private int Spent(int amount) { return session.Settings.Spent(amount); }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
@@ -95,11 +124,23 @@ namespace MinefieldClerk.Day
         }
 
         /// <summary>Probing needs battery and an active day.</summary>
-        public bool CanProbe => Playing && !BatteryEmpty;
+        public bool CanProbe => CanAct && !BatteryEmpty;
 
-        public void SpendProbe()
+        /// <summary>A defuse attempt was made: one kit is used up whatever the flag turned out to cover.</summary>
+        public void SpendKit()
+        {
+            kitsUsed++;
+        }
+
+        /// <summary>A probe was made: costs battery and counts towards the probe limit.</summary>
+        public void RegisterProbe()
         {
             battery = Mathf.Max(0f, battery - probeCostSeconds);
+            probesToday++;
+            if (rules.HasProbeLimit && probesToday > rules.ProbeCap)
+            {
+                Notify("Over the probe limit. Fined " + rules.ProbeFine + " per extra probe at the end of the shift.");
+            }
         }
 
         public void Notify(string text)
@@ -130,10 +171,17 @@ namespace MinefieldClerk.Day
 
         private void OnRegenerated()
         {
+            rules = RuleSet.ForDay(Day, session.Settings);
+            probesToday = 0;
+            kitsUsed = 0;
+            showRulebook = false;
+            rulebook.Rebuild(Day, rules, session.Settings);
             battery = MaxBattery;
             deathTimer = 0f;
-            Phase = DayPhase.Playing;
-            player.Frozen = false;   // a new field can start straight from a debrief (difficulty change, R)
+            // A new field can start straight from a debrief (difficulty change, R). With rules in force the shift
+            // starts with the briefing; Update keeps the deminer frozen until it is dismissed.
+            Phase = rules.Count > 0 ? DayPhase.Briefing : DayPhase.Playing;
+            player.Frozen = Phase == DayPhase.Briefing;
         }
 
         private void Update()
@@ -141,8 +189,27 @@ namespace MinefieldClerk.Day
             Keyboard kb = Keyboard.current;
             bool enter = kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame);
 
+            if (Phase == DayPhase.Briefing)
+            {
+                player.Frozen = true;   // the health reset runs after the field is generated and would unfreeze the deminer
+                if (enter) StartShift();
+                return;
+            }
+
             if (Phase == DayPhase.Playing)
             {
+                if (kb != null && kb.bKey.wasPressedThisFrame) ToggleRulebook();
+                if (showRulebook)
+                {
+                    // Reading is free: the deminer stands still and the detector clock stops.
+                    player.Frozen = true;
+                    if (kb != null)
+                    {
+                        if (kb.leftArrowKey.wasPressedThisFrame || kb.aKey.wasPressedThisFrame) rulebook.Turn(-1);
+                        if (kb.rightArrowKey.wasPressedThisFrame || kb.dKey.wasPressedThisFrame) rulebook.Turn(1);
+                    }
+                    return;
+                }
                 if (!BatteryEmpty) battery = Mathf.Max(0f, battery - Time.deltaTime);
 
                 if (health.Dead)
@@ -162,33 +229,81 @@ namespace MinefieldClerk.Day
             }
         }
 
+        private void ToggleRulebook()
+        {
+            if (showRulebook)
+            {
+                showRulebook = false;
+                player.Frozen = health.Dead;
+                return;
+            }
+            if (health.Dead) return;
+            if (mines.HasArmed)
+            {
+                Notify("A fuse is still burning.");
+                return;
+            }
+            showRulebook = true;
+        }
+
+        private void StartShift()
+        {
+            Phase = DayPhase.Playing;
+            player.Frozen = health.Dead;
+        }
+
         public void EndDay()
         {
             mines.Tally(out int correct, out int wrong);
-            int located = correct + mines.DudCount;
+            int located = correct + mines.DudCount;                  // flagged mines and exposed duds
+            int inGround = correct + mines.UncollectedDudCount;      // located but not collected
             int flagsPlaced = mines.FlagCount;
-            bool quotaMet = located >= Quota;
+            bool collecting = rules.CollectMines;
+            int counted = collecting ? mines.CollectedCount : located;   // what the quota counts
+            bool quotaMet = counted >= Quota;
 
             DifficultySettings cfg = session.Settings;
             int flagPay = Earned(cfg.payPerFlag);
             int penalty = Spent(cfg.wrongFlagPenalty);
             int bonusPay = Earned(cfg.quotaBonus);
-            int pay = located * flagPay - wrong * penalty;
             int bonus = quotaMet ? bonusPay : 0;
-            Money += pay + bonus;
+            int probesOver = rules.OverLimit(probesToday);
+            int probeFines = probesOver * rules.ProbeFine;
 
             report.Clear();
-            report.Add("Mines located (flagged or exposed duds): " + located + " x " + flagPay + " = " + (located * flagPay));
-            if (penalty > 0) report.Add("Wrong flags: " + wrong + " x -" + penalty);
-            else if (wrong > 0) report.Add("Flags on safe ground: " + wrong + " (unpaid)");
-            report.Add("Quota " + Quota + ": " + (quotaMet ? "MET, bonus +" + bonusPay : "NOT MET, no bonus"));
+            int pay;
+            if (collecting)
+            {
+                int collectedPay = mines.CollectedCount * rules.CollectPay;
+                int groundFines = inGround * rules.UncollectedFine;
+                pay = collectedPay - groundFines - wrong * penalty;
+                report.Add("Mines collected: " + mines.CollectedCount + " x " + rules.CollectPay + " = " + collectedPay);
+                report.Add("Defuse kits used: " + kitsUsed + " of " + rules.DefuseKits);
+                if (inGround > 0) report.Add("Ordnance abandoned in the field: " + inGround + " x -" + rules.UncollectedFine);
+            }
+            else
+            {
+                pay = located * flagPay - wrong * penalty;
+                report.Add("Mines located (flagged or exposed): " + located + " x " + flagPay + " = " + (located * flagPay));
+            }
+            Money += pay + bonus - probeFines;
+
+            if (penalty > 0) report.Add("Specialists sent in vain: " + wrong + " x -" + penalty);
+            else if (wrong > 0) report.Add("Specialists sent in vain: " + wrong + " (noted)");
+            if (rules.HasProbeLimit)
+            {
+                report.Add("Probe limit " + rules.ProbeCap + ": " + probesToday + " used" +
+                           (probesOver > 0 ? ", " + probesOver + " beyond allowance x -" + rules.ProbeFine : ", within allowance"));
+            }
+            report.Add("Quota " + Quota + (collecting ? " collected" : "") + ": " + (quotaMet ? "MET, bonus +" + bonusPay : "NOT MET. The shortfall is noted."));
             report.Add("Mines exploded: " + mines.ExplodedCount + "    Tiles probed: " + mines.ProbedCount + "    Flags placed: " + flagsPlaced);
 
             carryInjured = false;
             if (health.Dead)
             {
-                reportTitle = "DEMINER KILLED - DAY " + Day;
-                report.Add("The deminer did not come back. A relative takes the job tomorrow.");
+                reportTitle = "REGISTER ENTRY CLOSED - DAY " + Day;
+                report.Add("Citizen " + BasicRules.Surname + " is struck from the register.");
+                report.Add("A brother takes your boots and your place at the gate. The family still has to eat.");
             }
             else
             {
@@ -204,7 +319,7 @@ namespace MinefieldClerk.Day
                     else
                     {
                         carryInjured = true;
-                        report.Add("Not enough money for medicine. Starting tomorrow injured.");
+                        report.Add("Treatment declined: insufficient funds. Report for duty as you are.");
                     }
                 }
             }
@@ -221,6 +336,13 @@ namespace MinefieldClerk.Day
             session.NewDay();   // regenerates the field; OnRegenerated resets battery and phase
             if (carryInjured) health.Hit();
             carryInjured = false;
+        }
+
+        private void DrawRulebook()
+        {
+            int turn = paper.DrawPage(BookHeading, rulebook.IsSpecialPage ? BookSpecialSection : BookBasicSection,
+                rulebook.Current, rulebook.Index, rulebook.PageCount, rulebook.Slogan, rulebook.IsChangedPage ? BookStamp : "", BookFooter);
+            rulebook.Turn(turn);
         }
 
         private void OnGUI()
@@ -245,7 +367,8 @@ namespace MinefieldClerk.Day
             // Battery and day readout, top right.
             float w = PanelWidth, x = Screen.width - w - PanelMargin;
             GUI.Label(new Rect(x, PanelTop, w, RowHeight), "Day " + Day + " (" + DifficultyName + ")   Money " + Money, small);
-            GUI.Label(new Rect(x, Row2Top, w, RowHeight), "Flags " + mines.FlagCount + " / quota " + Quota, small);
+            GUI.Label(new Rect(x, Row2Top, w, RowHeight),
+                rules.CollectMines ? "Collected " + mines.CollectedCount + " / quota " + Quota : "Flags " + mines.FlagCount + " / quota " + Quota, small);
             GUI.color = BarBack;
             GUI.DrawTexture(new Rect(x, BarTop, w, BarHeight), Texture2D.whiteTexture);
             GUI.color = Battery01 > LowBatteryShare ? BarGood : BarLow;
@@ -254,13 +377,32 @@ namespace MinefieldClerk.Day
             GUI.Label(new Rect(x, LabelTop, w, RowHeight), BatteryEmpty ? "DETECTOR DEAD" : "Detector battery", small);
             if (Playing)
             {
-                GUI.Label(new Rect(x - HintExtra, HintTop, w + HintExtra, RowHeight), "Enter: end the day", small);
+                GUI.Label(new Rect(x - HintExtra, HintTop, w + HintExtra, RowHeight), "Enter: end the day   B: rulebook", small);
+                float ruleRow = RuleRowTop;
+                if (rules.HasProbeLimit)
+                {
+                    GUI.contentColor = probesToday > rules.ProbeCap ? BarLow : Color.white;
+                    GUI.Label(new Rect(x, ruleRow, w, RowHeight), "Probes " + probesToday + " / " + rules.ProbeCap, small);
+                    GUI.contentColor = Color.white;
+                    ruleRow += RowHeight;
+                }
+                if (rules.CollectMines)
+                {
+                    GUI.contentColor = KitsLeft == 0 ? BarLow : Color.white;
+                    GUI.Label(new Rect(x, ruleRow, w, RowHeight), "Defuse kits " + KitsLeft + " / " + rules.DefuseKits, small);
+                    GUI.contentColor = Color.white;
+                    ruleRow += RowHeight;
+                    GUI.Label(new Rect(x - HintExtra, ruleRow, w + HintExtra, RowHeight), WorkHint, small);
+                }
             }
 
             if (Time.time < toastUntil)
             {
                 GUI.Label(new Rect(Screen.width * Num.Half - ToastWidth * Num.Half, Screen.height - ToastBottomGap, ToastWidth, ToastHeight), toast, toastStyle);
             }
+
+            if (Phase == DayPhase.Briefing) paper.Draw(BriefingHeading + Day, BriefingFooterPrefix + BasicRules.Surname, BasicRules.SloganFor(Day), rules);
+            else if (Phase == DayPhase.Playing && showRulebook) DrawRulebook();
 
             if (Phase == DayPhase.Debrief)
             {
