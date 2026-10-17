@@ -21,6 +21,12 @@ namespace MinefieldClerk.Player
             new Vector2Int(-1, 1), new Vector2Int(-1, 0), new Vector2Int(-1, -1), new Vector2Int(0, -1),
         };
 
+        private const float InputDeadZoneSqr = 0.0001f;   // squared stick/key magnitude below which there is no input
+        private const float FacingInputSqr = 0.25f;        // squared input magnitude needed to turn
+        private const float FlipDeadZone = 0.1f;           // horizontal input needed to mirror the sprite
+        private const float MovedSqr = 1e-10f;             // squared distance that counts as having moved
+        private const float MouseMovedSqr = 0.5f;          // squared pixels the mouse must travel to take over from the keys
+
         private const float CellAspect = PixelConstants.CellHeight / PixelConstants.CellWidth;
 
         [SerializeField] private FieldBuilder field;
@@ -37,6 +43,9 @@ namespace MinefieldClerk.Player
 
         /// <summary>Isometric cell the player's feet are in.</summary>
         public Vector3Int CurrentCell { get; private set; }
+
+        /// <summary>True while the player is actually moving (drives the walk animation; the pixel-snapped transform flickers).</summary>
+        public bool IsMoving { get; private set; }
 
         /// <summary>Facing as a cell offset (each component -1..1).</summary>
         public Vector2Int Facing => facing;
@@ -69,6 +78,18 @@ namespace MinefieldClerk.Player
         public float SpeedMultiplier { get; set; } = 1f;
         public bool Frozen { get; set; }
 
+        private void Awake()
+        {
+            // Depth sorting by the feet: same order as the props, ordered by pivot height, so the deminer
+            // walks behind things that are lower on screen and in front of things that are higher.
+            if (body == null) body = GetComponent<SpriteRenderer>();
+            if (body != null)
+            {
+                body.spriteSortPoint = SpriteSortPoint.Pivot;
+                body.sortingOrder = PixelConstants.SortingOrderDefault;
+            }
+        }
+
         private void Start()
         {
             Respawn();
@@ -85,10 +106,11 @@ namespace MinefieldClerk.Player
         private void Update()
         {
             UpdateMouse();
+            IsMoving = false;
             if (!Frozen)
             {
                 Vector2 input = ReadInput();
-                if (input.sqrMagnitude > 0.0001f)
+                if (input.sqrMagnitude > InputDeadZoneSqr)
                 {
                     walkTarget = null; // keyboard / stick overrides click-walk; the highlight keeps following the mouse
                 }
@@ -97,23 +119,24 @@ namespace MinefieldClerk.Player
                     input = WalkInput();
                 }
 
-                if (input.sqrMagnitude > 0.0001f)
+                if (input.sqrMagnitude > InputDeadZoneSqr)
                 {
                     Vector2 delta = new Vector2(input.x, input.y * CellAspect) * (speed * SpeedMultiplier * Time.deltaTime);
                     Vector2 before = feet;
                     Move(delta);
-                    if (walkTarget.HasValue && (feet - before).sqrMagnitude < 1e-10f)
+                    IsMoving = (feet - before).sqrMagnitude > MovedSqr;
+                    if (walkTarget.HasValue && !IsMoving)
                     {
                         walkTarget = null; // stuck against the field edge
                     }
 
-                    if (input.sqrMagnitude > 0.25f)
+                    if (input.sqrMagnitude > FacingInputSqr)
                     {
-                        int octant = Mathf.RoundToInt(Mathf.Atan2(input.y, input.x) / (Mathf.PI / 4f));
-                        facing = FacingByOctant[(octant + 8) % 8];
+                        int octant = Mathf.RoundToInt(Mathf.Atan2(input.y, input.x) / (Num.OctantRadians));
+                        facing = FacingByOctant[(octant + Num.Octants) % Num.Octants];
                     }
 
-                    if (body != null && Mathf.Abs(input.x) > 0.1f)
+                    if (body != null && Mathf.Abs(input.x) > FlipDeadZone)
                     {
                         body.flipX = input.x < 0f;
                     }
@@ -130,7 +153,7 @@ namespace MinefieldClerk.Player
             if (cam == null) return;
 
             Vector2 screen = mouse.position.ReadValue();
-            if ((screen - lastMouse).sqrMagnitude > 0.5f || mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame)
+            if ((screen - lastMouse).sqrMagnitude > MouseMovedSqr || mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame)
             {
                 mouseActive = true;
             }

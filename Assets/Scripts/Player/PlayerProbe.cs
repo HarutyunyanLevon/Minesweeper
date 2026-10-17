@@ -21,6 +21,8 @@ namespace MinefieldClerk.Player
         [SerializeField] private MineField mines;
         [SerializeField] private PlayerHealth health;
 
+        private DeminerSprites sprites;
+
         private readonly HashSet<Vector3Int> underFoot = new HashSet<Vector3Int>();
         private readonly Dictionary<Vector3Int, Vector3> remote = new Dictionary<Vector3Int, Vector3>();
         private readonly List<Vector3Int> scratch = new List<Vector3Int>();
@@ -29,6 +31,7 @@ namespace MinefieldClerk.Player
 
         private void OnEnable()
         {
+            if (sprites == null) sprites = player.GetComponent<DeminerSprites>();
             mines.MineArmed += OnArmed;
             mines.MineTriggered += OnTriggered;
             mines.MineDud += OnResolved;
@@ -101,7 +104,7 @@ namespace MinefieldClerk.Player
                 Vector3 pos = player.transform.position;
                 foreach (KeyValuePair<Vector3Int, Vector3> pair in remote)
                 {
-                    if ((pos - pair.Value).sqrMagnitude > 0.0001f) scratch.Add(pair.Key);
+                    if ((pos - pair.Value).sqrMagnitude > Num.Epsilon) scratch.Add(pair.Key);
                 }
                 foreach (Vector3Int c in scratch) mines.Detonate(c);
             }
@@ -142,6 +145,7 @@ namespace MinefieldClerk.Player
                 }
                 else
                 {
+                    if (sprites != null) sprites.PlayAction("probe");
                     ProbeOutcome result = mines.Probe(cell);
                     if (day != null && (result == ProbeOutcome.Safe || result == ProbeOutcome.Armed)) day.SpendProbe();
                 }
@@ -149,6 +153,7 @@ namespace MinefieldClerk.Player
             else if (flag)
             {
                 player.FaceCell(cell);
+                if (sprites != null) sprites.PlayAction("flag");
                 mines.ToggleFlag(cell);
             }
         }

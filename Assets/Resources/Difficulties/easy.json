@@ -1,0 +1,24 @@
+{
+  "name": "Easy",
+  "sizes": [
+    { "width": 8, "height": 8 },
+    { "width": 9, "height": 9 },
+    { "width": 10, "height": 10 }
+  ],
+  "mines": 10,
+
+  "batterySeconds": 120,
+  "payPerFlag": 10,
+  "wrongFlagPenalty": 10,
+  "quotaBonus": 25,
+  "medicineCost": 15,
+  "quotaPerDay": 1,
+
+  "quotaBase": 5,
+  "quotaMaxShare": 0.8,
+
+  "radarBattery": 1.25,
+  "moneyEarn": 1.2,
+  "moneySpend": 0.8,
+  "encounterRate": 0.5
+}

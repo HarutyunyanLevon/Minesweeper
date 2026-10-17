@@ -17,6 +17,13 @@ namespace MinefieldClerk.EditorTools
         private const string PropDir = "Assets/Art/Objects/Props";
         private const string CharDir = "Assets/Art/Characters";
         private const string ScenePath = "Assets/Scenes/M2_Mines.unity";
+        private const string PngExtension = ".png";
+
+        // Numbered sprite series: first index and how many files.
+        private const int DigitFirst = 0, DigitCount = 9;     // radar digits 0..8
+        private const int BlastFirst = 1, BlastCount = 6;
+        private const int DugFirst = 1, DugCount = 3;
+        private const int MineFirst = 1, MineCount = 4;
 
         [MenuItem("Minefield/Art/Apply To M2 Scene")]
         public static void ApplyToM2()
@@ -71,12 +78,22 @@ namespace MinefieldClerk.EditorTools
             decor.Configure(field, mines,
                 Load(PropDir + "/fence_x.png"), Load(PropDir + "/fence_x_broken.png"),
                 Load(PropDir + "/fence_y.png"), Load(PropDir + "/fence_y_broken.png"),
-                Load(PropDir + "/farmhouse.png"), Load(PropDir + "/tank.png"));
+                Load(PropDir + "/farmhouse_big.png"), Load(PropDir + "/tank.png"));
             decor.ConfigureScatter(
                 new[] { Load(PropDir + "/tree_dead.png") },
                 new[] { Load(PropDir + "/bush.png") },
                 new[] { Load(PropDir + "/grass_tuft.png") },
                 new[] { Load(PropDir + "/rubble.png") });
+            decor.ConfigureRuin(
+                new[] { Load(PropDir + "/fence_x_collapse_a.png"), Load(PropDir + "/fence_x_lean.png"), Load(PropDir + "/fence_x_collapse_b.png"), Load(PropDir + "/fence_x_wire.png") },
+                new[] { Load(PropDir + "/fence_y_collapse_a.png"), Load(PropDir + "/fence_y_lean.png"), Load(PropDir + "/fence_y_collapse_b.png"), Load(PropDir + "/fence_y_wire.png") },
+                new[] { Load(PropDir + "/barrel.png"), Load(PropDir + "/crates.png"), Load(PropDir + "/sandbags.png"),
+                        Load(PropDir + "/scrap.png"), Load(PropDir + "/tank_trap.png"), Load(PropDir + "/barbed_wire.png") },
+                new[] { Load(PropDir + "/wheat_tall_a.png"), Load(PropDir + "/wheat_tall_b.png"),
+                        Load(PropDir + "/wheat_small_a.png"), Load(PropDir + "/wheat_small_b.png") },
+                new[] { Load(PropDir + "/haystack.png"), Load(PropDir + "/cart.png") },
+                Load(PropDir + "/barn.png"), Load(PropDir + "/well.png"), Load(PropDir + "/kennel.png"),
+                Load(PropDir + "/dog_sleep.png"), Load(PropDir + "/sign_mine.png"), Load(PropDir + "/telegraph_pole.png"));
             EditorUtility.SetDirty(decor);
 
             // ---- field view art: radar digits, flag, scorch mark, blast, dug craters, mines
@@ -84,12 +101,12 @@ namespace MinefieldClerk.EditorTools
             if (view != null)
             {
                 view.Configure(
-                    LoadSeries("Assets/Art/Radar/digit_", 0, 9),
-                    Load("Assets/Art/Objects/Test/flag.png"),
+                    LoadSeries("Assets/Art/Radar/digit_", DigitFirst, DigitCount),
+                    Load("Assets/Art/Objects/Test/flag_small.png"),
                     Load(TileDir + "/crater.png"),
-                    LoadSeries(TileDir + "/blast_", 1, 6),
-                    LoadSeries(TileDir + "/dug_", 1, 3),
-                    LoadSeries("Assets/Art/Objects/Mines/mine_", 1, 4));
+                    LoadSeries(TileDir + "/blast_", BlastFirst, BlastCount),
+                    LoadSeries(TileDir + "/dug_", DugFirst, DugCount),
+                    LoadSeries("Assets/Art/Objects/Mines/mine_", MineFirst, MineCount));
                 EditorUtility.SetDirty(view);
             }
 
@@ -105,8 +122,8 @@ namespace MinefieldClerk.EditorTools
             var sprites = new Sprite[count];
             for (int i = 0; i < count; i++)
             {
-                sprites[i] = AssetDatabase.LoadAssetAtPath<Sprite>(prefix + (first + i) + ".png");
-                if (sprites[i] == null) Debug.LogWarning("[Art] Missing sprite " + prefix + (first + i) + ".png");
+                sprites[i] = AssetDatabase.LoadAssetAtPath<Sprite>(prefix + (first + i) + PngExtension);
+                if (sprites[i] == null) Debug.LogWarning("[Art] Missing sprite " + prefix + (first + i) + PngExtension);
             }
             return sprites;
         }

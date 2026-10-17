@@ -16,18 +16,21 @@ namespace MinefieldClerk.Field
     /// Hidden mines, probe results and flags for one field. Pure game state: all visuals live in MineFieldView.
     /// Probing a mine arms it: the mine is shown, then after a random fuse (fuseMin..fuseMax seconds) it explodes,
     /// unless it is a dud (dudChance). If the player moves while a fuse burns, the mine always explodes at once.
-    /// The first probe of a field is always safe: it and its 8 neighbours are cleared of mines (they are moved elsewhere).
+    /// The spawn cell and its 8 neighbours are mine-free from the start. Probing elsewhere is not guaranteed safe and never reshuffles mines.
     /// Walking never triggers mines; only probing does. A radar number is the count of mines within `radius`
     /// cells (8 neighbours for radius 1) and is stamped only on tiles the player probed.
     /// </summary>
     public class MineField : MonoBehaviour
     {
         [SerializeField] private FieldBuilder field;
-        [SerializeField, Range(0f, 0.5f)] private float density = 0.14f;
-        [Tooltip("The first rows next to the entrance never hold mines")]
-        [SerializeField] private int safeRows = 2;
-        [Tooltip("No mines within this many cells of the start cell: 1 = a 3x3 empty square, 2 = also the ring around it, so those cells are empty or numbers")]
-        [SerializeField] private int startSafeRadius = 2;
+        [SerializeField, Range(0f, MaxDensity)] private float density = 0.14f;
+        // At the start only the player's cell and its 8 neighbours are mine-free; everything else may hold mines.
+        // Constants (not inspector fields) so old scene values cannot override this.
+        private const float MaxDensity = 0.5f;
+        private const int RepairBudgetDivisor = 3;   // the fairness pass may remove at most MineCount / this mines
+        private const int MinRepairBudget = 3;
+        private const int safeRows = 0;
+        private const int startSafeRadius = 1;
         [SerializeField] private int radius = 1;
         [Tooltip("-1 = new random layout every time")]
         [SerializeField] private int seed = -1;
@@ -77,7 +80,14 @@ namespace MinefieldClerk.Field
         public int ArmedCount => armed.Count;
         public bool HasArmed => armed.Count > 0;
 
+        /// <summary>Generates with the inspector density (about density x cells mines).</summary>
         public void Generate()
+        {
+            Generate(Mathf.RoundToInt(density * field.Width * field.Height));
+        }
+
+        /// <summary>Generates a field with exactly this many mines (fewer only if there is no room).</summary>
+        public void Generate(int mineCount)
         {
             mines = new bool[field.Width, field.Height];
             probed.Clear();
@@ -89,18 +99,27 @@ namespace MinefieldClerk.Field
             MineCount = 0;
 
             rng = seed >= 0 ? new System.Random(seed) : new System.Random();
+
+            var candidates = new List<Vector2Int>();
             for (int x = 0; x < field.Width; x++)
             {
                 for (int y = safeRows; y < field.Height; y++)
                 {
-                    if (InStartZone(x, y)) continue;
-                    if (rng.NextDouble() < density)
-                    {
-                        mines[x, y] = true;
-                        MineCount++;
-                    }
+                    if (!InStartZone(x, y)) candidates.Add(new Vector2Int(x, y));
                 }
             }
+            for (int i = candidates.Count - 1; i > 0; i--)
+            {
+                int j = rng.Next(i + 1);
+                (candidates[i], candidates[j]) = (candidates[j], candidates[i]);
+            }
+            int count = Mathf.Min(mineCount, candidates.Count);
+            for (int i = 0; i < count; i++) mines[candidates[i].x, candidates[i].y] = true;
+            MineCount = count;
+
+            // The spawn zone is mine-free and the layout is made solvable from the spawn cell right now,
+            // so probing anywhere later never reshuffles the field.
+            if (noGuessing) MakeSolvable(field.StartCell);
 
             Regenerated?.Invoke();
         }
@@ -225,7 +244,7 @@ namespace MinefieldClerk.Field
             var unresolved = new List<Vector2Int>();
             var candidates = new List<Vector2Int>();
             var origin = new Vector2Int(start.x, start.y);
-            int budget = Mathf.Max(3, MineCount / 3);
+            int budget = Mathf.Max(MinRepairBudget, MineCount / RepairBudgetDivisor);
             int removed = 0;
             int left = 0;
 
@@ -283,9 +302,8 @@ namespace MinefieldClerk.Field
 
             if (!firstProbeDone)
             {
+                // Only the spawn zone is guaranteed safe; probing elsewhere never changes the layout.
                 firstProbeDone = true;
-                MakeStartSafe(cell);
-                if (noGuessing) MakeSolvable(cell);
             }
 
             if (mines[cell.x, cell.y]) return Arm(cell);

@@ -21,16 +21,30 @@ namespace MinefieldClerk.Day
     {
         public static DayManager Instance { get; private set; }
 
-        [Header("Battery")]
-        [SerializeField] private float batterySeconds = 120f;
+        // IMGUI placeholder layout (pixels) and look.
+        private const int SmallFont = 20, BigFont = 26, TitleFont = 34;
+        private const float DimMax = 0.35f;                     // darkest overlay when the battery is empty
+        private const float LowBatteryShare = 0.25f;            // below this the bar turns red
+        private const float PanelWidth = 320f, PanelMargin = 20f, PanelTop = 10f, RowHeight = 30f;
+        private const float Row2Top = 38f, BarTop = 70f, BarHeight = 20f, BarInset = 2f, LabelTop = 92f, HintTop = 118f, HintExtra = 40f;
+        private const float ToastWidth = 960f, ToastHeight = 40f, ToastBottomGap = 80f;
+        private const float ToastSeconds = 2.5f;
+        private const float DebriefWidth = 760f, DebriefHeight = 460f;
+        private const float TitleTop = 14f, TitleHeight = 50f, LinesTop = 80f, LineSidePad = 30f, LineGap = 6f;
+        private const float ButtonWidth = 320f, ButtonHeight = 50f, ButtonBottomGap = 70f;
+        private const string ObjectName = "DayManager";
+
+        private static readonly Color TextColor = new Color(1f, 0.94f, 0.78f);
+        private static readonly Color DimColor = new Color(0.12f, 0.05f, 0.2f);
+        private static readonly Color BarBack = new Color(0f, 0f, 0f, 0.6f);
+        private static readonly Color BarGood = new Color(0.5f, 0.9f, 0.4f);
+        private static readonly Color BarLow = new Color(0.95f, 0.35f, 0.25f);
+        private static readonly Color PanelColor = new Color(0.1f, 0.08f, 0.06f, 0.95f);
+
+        // Battery length, pay, quota and medicine numbers live in the difficulty JSON files
+        // (Assets/Resources/Difficulties), see DifficultySettings.
         [SerializeField] private float probeCostSeconds = 0f;
-        [Header("Pay (placeholder numbers)")]
-        [SerializeField] private int payPerFlag = 10;
-        [SerializeField] private int wrongFlagPenalty = 10;
-        [SerializeField] private int quotaBase = 10;
-        [SerializeField] private int quotaPerDay = 1;
-        [SerializeField] private int quotaBonus = 25;
-        [SerializeField] private int medicineCost = 15;
+        [Tooltip("Seconds after a fatal blast before the debrief opens")]
         [SerializeField] private float deathDelay = 2.5f;
 
         private FieldSession session;
@@ -52,15 +66,31 @@ namespace MinefieldClerk.Day
         public int Money { get; private set; }
         public bool Playing => Phase == DayPhase.Playing;
         public bool BatteryEmpty => battery <= 0f;
-        public float Battery01 => Mathf.Clamp01(battery / batterySeconds);
-        public int Quota => quotaBase + quotaPerDay * (Day - 1);
+        /// <summary>Radar: detector battery length for the current difficulty.</summary>
+        private float MaxBattery => session.Settings.batterySeconds * session.Settings.radarBattery;
+        public float Battery01 => Mathf.Clamp01(battery / MaxBattery);
+        public string DifficultyName => session.Settings.name;
+
+        /// <summary>Flags needed today: the difficulty's base plus a little per day, never more than 80% of the mines.</summary>
+        public int Quota
+        {
+            get
+            {
+                DifficultySettings s = session.Settings;
+                int wanted = s.quotaBase + s.quotaPerDay * (Day - 1);
+                return Mathf.Min(wanted, Mathf.RoundToInt(s.mines * s.quotaMaxShare));
+            }
+        }
+
+        private int Earned(int amount) { return Mathf.RoundToInt(amount * session.Settings.moneyEarn); }
+        private int Spent(int amount) { return Mathf.RoundToInt(amount * session.Settings.moneySpend); }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
         {
             if (Object.FindAnyObjectByType<FieldSession>() != null && Object.FindAnyObjectByType<DayManager>() == null)
             {
-                new GameObject("DayManager").AddComponent<DayManager>();
+                new GameObject(ObjectName).AddComponent<DayManager>();
             }
         }
 
@@ -75,7 +105,7 @@ namespace MinefieldClerk.Day
         public void Notify(string text)
         {
             toast = text;
-            toastUntil = Time.time + 2.5f;
+            toastUntil = Time.time + ToastSeconds;
         }
 
         private void Awake()
@@ -100,9 +130,10 @@ namespace MinefieldClerk.Day
 
         private void OnRegenerated()
         {
-            battery = batterySeconds;
+            battery = MaxBattery;
             deathTimer = 0f;
             Phase = DayPhase.Playing;
+            player.Frozen = false;   // a new field can start straight from a debrief (difficulty change, R)
         }
 
         private void Update()
@@ -138,15 +169,19 @@ namespace MinefieldClerk.Day
             int flagsPlaced = mines.FlagCount;
             bool quotaMet = located >= Quota;
 
-            int pay = located * payPerFlag - wrong * wrongFlagPenalty;
-            int bonus = quotaMet ? quotaBonus : 0;
+            DifficultySettings cfg = session.Settings;
+            int flagPay = Earned(cfg.payPerFlag);
+            int penalty = Spent(cfg.wrongFlagPenalty);
+            int bonusPay = Earned(cfg.quotaBonus);
+            int pay = located * flagPay - wrong * penalty;
+            int bonus = quotaMet ? bonusPay : 0;
             Money += pay + bonus;
 
             report.Clear();
-            report.Add("Mines located (flagged or exposed duds): " + located + " x " + payPerFlag + " = " + (located * payPerFlag));
-            if (wrongFlagPenalty > 0) report.Add("Wrong flags: " + wrong + " x -" + wrongFlagPenalty);
+            report.Add("Mines located (flagged or exposed duds): " + located + " x " + flagPay + " = " + (located * flagPay));
+            if (penalty > 0) report.Add("Wrong flags: " + wrong + " x -" + penalty);
             else if (wrong > 0) report.Add("Flags on safe ground: " + wrong + " (unpaid)");
-            report.Add("Quota " + Quota + ": " + (quotaMet ? "MET, bonus +" + quotaBonus : "NOT MET, no bonus"));
+            report.Add("Quota " + Quota + ": " + (quotaMet ? "MET, bonus +" + bonusPay : "NOT MET, no bonus"));
             report.Add("Mines exploded: " + mines.ExplodedCount + "    Tiles probed: " + mines.ProbedCount + "    Flags placed: " + flagsPlaced);
 
             carryInjured = false;
@@ -160,10 +195,11 @@ namespace MinefieldClerk.Day
                 reportTitle = "DEBRIEF - DAY " + Day;
                 if (health.Injured)
                 {
-                    if (Money >= medicineCost)
+                    int medicine = Spent(session.Settings.medicineCost);
+                    if (Money >= medicine)
                     {
-                        Money -= medicineCost;
-                        report.Add("Medicine: -" + medicineCost + " (injury treated)");
+                        Money -= medicine;
+                        report.Add("Medicine: -" + medicine + " (injury treated)");
                     }
                     else
                     {
@@ -191,56 +227,57 @@ namespace MinefieldClerk.Day
         {
             if (small == null)
             {
-                small = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold };
-                small.normal.textColor = new Color(1f, 0.94f, 0.78f);
-                big = new GUIStyle(small) { fontSize = 26 };
-                title = new GUIStyle(small) { fontSize = 34, alignment = TextAnchor.MiddleCenter };
+                small = new GUIStyle(GUI.skin.label) { fontSize = SmallFont, fontStyle = FontStyle.Bold };
+                small.normal.textColor = TextColor;
+                big = new GUIStyle(small) { fontSize = BigFont };
+                title = new GUIStyle(small) { fontSize = TitleFont, alignment = TextAnchor.MiddleCenter };
                 wrapped = new GUIStyle(big) { wordWrap = true };
                 toastStyle = new GUIStyle(big) { alignment = TextAnchor.UpperCenter };
             }
 
             // The sun sinks as the battery drains.
-            float dim = (1f - Battery01) * 0.35f;
-            GUI.color = new Color(0.12f, 0.05f, 0.2f, dim);
+            Color dim = DimColor;
+            dim.a = (1f - Battery01) * DimMax;
+            GUI.color = dim;
             GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
             GUI.color = Color.white;
 
             // Battery and day readout, top right.
-            float w = 320f, x = Screen.width - w - 20f;
-            GUI.Label(new Rect(x, 10, w, 30), "Day " + Day + "   Money " + Money, small);
-            GUI.Label(new Rect(x, 38, w, 30), "Flags " + mines.FlagCount + " / quota " + Quota, small);
-            GUI.color = new Color(0f, 0f, 0f, 0.6f);
-            GUI.DrawTexture(new Rect(x, 70, w, 20), Texture2D.whiteTexture);
-            GUI.color = Battery01 > 0.25f ? new Color(0.5f, 0.9f, 0.4f) : new Color(0.95f, 0.35f, 0.25f);
-            GUI.DrawTexture(new Rect(x + 2, 72, (w - 4) * Battery01, 16), Texture2D.whiteTexture);
+            float w = PanelWidth, x = Screen.width - w - PanelMargin;
+            GUI.Label(new Rect(x, PanelTop, w, RowHeight), "Day " + Day + " (" + DifficultyName + ")   Money " + Money, small);
+            GUI.Label(new Rect(x, Row2Top, w, RowHeight), "Flags " + mines.FlagCount + " / quota " + Quota, small);
+            GUI.color = BarBack;
+            GUI.DrawTexture(new Rect(x, BarTop, w, BarHeight), Texture2D.whiteTexture);
+            GUI.color = Battery01 > LowBatteryShare ? BarGood : BarLow;
+            GUI.DrawTexture(new Rect(x + BarInset, BarTop + BarInset, (w - BarInset * 2f) * Battery01, BarHeight - BarInset * 2f), Texture2D.whiteTexture);
             GUI.color = Color.white;
-            GUI.Label(new Rect(x, 92, w, 30), BatteryEmpty ? "DETECTOR DEAD" : "Detector battery", small);
+            GUI.Label(new Rect(x, LabelTop, w, RowHeight), BatteryEmpty ? "DETECTOR DEAD" : "Detector battery", small);
             if (Playing)
             {
-                GUI.Label(new Rect(x - 40, 118, w + 40, 30), "Enter: end the day", small);
+                GUI.Label(new Rect(x - HintExtra, HintTop, w + HintExtra, RowHeight), "Enter: end the day", small);
             }
 
             if (Time.time < toastUntil)
             {
-                GUI.Label(new Rect(Screen.width / 2f - 480, Screen.height - 80, 960, 40), toast, toastStyle);
+                GUI.Label(new Rect(Screen.width * Num.Half - ToastWidth * Num.Half, Screen.height - ToastBottomGap, ToastWidth, ToastHeight), toast, toastStyle);
             }
 
             if (Phase == DayPhase.Debrief)
             {
-                Rect box = new Rect(Screen.width / 2f - 380, Screen.height / 2f - 230, 760, 460);
-                GUI.color = new Color(0.1f, 0.08f, 0.06f, 0.95f);
+                Rect box = new Rect(Screen.width * Num.Half - DebriefWidth * Num.Half, Screen.height * Num.Half - DebriefHeight * Num.Half, DebriefWidth, DebriefHeight);
+                GUI.color = PanelColor;
                 GUI.DrawTexture(box, Texture2D.whiteTexture);
                 GUI.color = Color.white;
-                GUI.Label(new Rect(box.x, box.y + 14, box.width, 50), reportTitle, title);
-                float y = box.y + 80f;
+                GUI.Label(new Rect(box.x, box.y + TitleTop, box.width, TitleHeight), reportTitle, title);
+                float y = box.y + LinesTop;
                 foreach (string line in report)
                 {
-                    float textWidth = box.width - 60f;
+                    float textWidth = box.width - LineSidePad * 2f;
                     float lineHeight = wrapped.CalcHeight(new GUIContent(line), textWidth);
-                    GUI.Label(new Rect(box.x + 30, y, textWidth, lineHeight), line, wrapped);
-                    y += lineHeight + 6f;
+                    GUI.Label(new Rect(box.x + LineSidePad, y, textWidth, lineHeight), line, wrapped);
+                    y += lineHeight + LineGap;
                 }
-                if (GUI.Button(new Rect(box.center.x - 160, box.yMax - 70, 320, 50), "Next day (Enter)"))
+                if (GUI.Button(new Rect(box.center.x - ButtonWidth * Num.Half, box.yMax - ButtonBottomGap, ButtonWidth, ButtonHeight), "Next day (Enter)"))
                 {
                     NextDay();
                 }

@@ -15,7 +15,7 @@ namespace MinefieldClerk
         public const int RefResolutionY = 270;
 
         // (refResY / 2) / PPU = 135 / 32 = 4.21875
-        public const float OrthoSize = (RefResolutionY / 2f) / PixelsPerUnit;
+        public const float OrthoSize = RefResolutionY * Num.Half / PixelsPerUnit;
 
         // Isometric grid cell size in world units: (tile width, tile height, 1).
         public const float CellWidth = TileWidthPx / (float)PixelsPerUnit;    // 1.0

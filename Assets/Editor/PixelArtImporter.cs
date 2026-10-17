@@ -13,6 +13,9 @@ namespace MinefieldClerk.EditorTools
     /// </summary>
     public class PixelArtImporter : AssetPostprocessor
     {
+        private const string PngExtension = ".png";
+        private static readonly Vector2 BottomCenterPivot = new Vector2(Num.Half, 0f);
+
         // Safety net: the project's default import preset may leave new textures in Multiple mode, and setting the
         // mode inside OnPreprocessTexture is not always honored. Fix it after the import and reimport once.
         private static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
@@ -21,7 +24,7 @@ namespace MinefieldClerk.EditorTools
             {
                 if (!path.StartsWith(PixelConstants.ArtRoot, StringComparison.Ordinal)) continue;
                 if (path.StartsWith(PixelConstants.SheetsFolder, StringComparison.Ordinal)) continue;
-                if (!path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!path.EndsWith(PngExtension, StringComparison.OrdinalIgnoreCase)) continue;
 
                 var importer = AssetImporter.GetAtPath(path) as TextureImporter;
                 if (importer != null && importer.spriteImportMode != SpriteImportMode.Single)
@@ -70,7 +73,7 @@ namespace MinefieldClerk.EditorTools
             if (bottomPivot && !isSheet)
             {
                 settings.spriteAlignment = (int)SpriteAlignment.BottomCenter;
-                settings.spritePivot = new Vector2(0.5f, 0f);
+                settings.spritePivot = BottomCenterPivot;
             }
             importer.SetTextureSettings(settings);
 

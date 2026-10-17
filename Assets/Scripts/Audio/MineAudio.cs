@@ -10,6 +10,19 @@ namespace MinefieldClerk.Field
     /// </summary>
     public class MineAudio : MonoBehaviour
     {
+        private const string ObjectName = "MineAudio";
+
+        [Header("Volumes")]
+        [SerializeField] private float clackVolume = 0.9f;
+        [SerializeField] private float boomVolume = 1f;
+        [SerializeField] private float dudVolume = 0.8f;
+        [SerializeField] private float beepVolume = 0.7f;
+        [Header("Beep pitch rises from start to end as the fuse burns")]
+        [SerializeField] private float beepPitchStart = 1f;
+        [SerializeField] private float beepPitchEnd = 1.6f;
+
+        private const float Flat2D = 0f;   // AudioSource.spatialBlend: fully 2D
+
         private MineField mines;
         private AudioSource sfx;
         private AudioSource beepSource;
@@ -20,15 +33,15 @@ namespace MinefieldClerk.Field
         private static void Boot()
         {
             if (FindAnyObjectByType<MineField>() == null || FindAnyObjectByType<MineAudio>() != null) return;
-            new GameObject("MineAudio").AddComponent<MineAudio>();
+            new GameObject(ObjectName).AddComponent<MineAudio>();
         }
 
         private void Awake()
         {
             sfx = gameObject.AddComponent<AudioSource>();
             beepSource = gameObject.AddComponent<AudioSource>();
-            sfx.spatialBlend = 0f;
-            beepSource.spatialBlend = 0f;
+            sfx.spatialBlend = Flat2D;
+            beepSource.spatialBlend = Flat2D;
             beep = ProceduralSfx.Beep();
             clack = ProceduralSfx.Clack();
             boom = ProceduralSfx.Boom();
@@ -56,20 +69,20 @@ namespace MinefieldClerk.Field
 
         private void OnArmed(Vector3Int cell, float fuse)
         {
-            sfx.PlayOneShot(clack, 0.9f);
+            sfx.PlayOneShot(clack, clackVolume);
             beeps[cell] = StartCoroutine(Beeps(fuse));
         }
 
         private void OnTriggered(Vector3Int cell)
         {
             StopBeeps(cell);
-            sfx.PlayOneShot(boom, 1f);
+            sfx.PlayOneShot(boom, boomVolume);
         }
 
         private void OnDud(Vector3Int cell)
         {
             StopBeeps(cell);
-            sfx.PlayOneShot(dud, 0.8f);
+            sfx.PlayOneShot(dud, dudVolume);
         }
 
         private IEnumerator Beeps(float fuse)
@@ -78,8 +91,8 @@ namespace MinefieldClerk.Field
             while (true)
             {
                 float progress = Mathf.Clamp01(t / fuse);
-                beepSource.pitch = Mathf.Lerp(1f, 1.6f, progress);
-                beepSource.PlayOneShot(beep, 0.7f);
+                beepSource.pitch = Mathf.Lerp(beepPitchStart, beepPitchEnd, progress);
+                beepSource.PlayOneShot(beep, beepVolume);
                 float interval = FuseTiming.BeepInterval(progress);
                 yield return new WaitForSeconds(interval);
                 t += interval;

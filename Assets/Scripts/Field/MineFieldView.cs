@@ -11,8 +11,40 @@ namespace MinefieldClerk.Field
     public class MineFieldView : MonoBehaviour
     {
         private const int OrderProbed = PixelConstants.SortingOrderGround + 1;
-        private const int OrderRadar = 50;
+        // Numbers are painted on the ground: above the dug tile and the flag diamond, below flags, props and the player.
+        private const int OrderRadar = OrderProbed + 3;
         private const int OrderBlast = 60;
+        private const int OrderFlagCell = OrderProbed + 1;   // glowing diamond under a flag
+        private const int OrderMine = OrderProbed + 2;       // flat mine markers: below standing things
+        private const int OrderHint = OrderRadar - 1;        // dev hint numbers sit just under real ones
+        private const int OrderGrid = OrderProbed;
+
+        private const float FlagCellOffsetY = -PixelConstants.CellHeight * Num.Half;   // diamond sits at the cell's feet
+        private const float GridLift = 0.001f;           // avoids z-fighting between grid pieces
+        private const float MineLiftShare = 0.4f;        // share of the mine sprite height lowered under the cell centre
+        private const float BlastFrameSeconds = 0.07f;
+        private const float PulseFlashSeconds = 0.06f;
+        private const float PulseMinGap = 0.02f;
+        private const float HintAlpha = 0.65f;
+
+        private static readonly Color ArmedFlash = new Color(1f, 0.35f, 0.3f);
+        private static readonly Color DudColor = new Color(0.55f, 0.55f, 0.6f);
+        private static readonly Color32 EdgeColor = new Color32(255, 255, 255, 255);
+        private static readonly Color FlagCellOutline = new Color(1f, 0.84f, 0.25f, 0.92f);
+        private static readonly Color FlagCellFill = new Color(1f, 0.84f, 0.25f, 0.24f);
+
+        // Diamond drawing: the edge climbs DiamondSlope pixels sideways per pixel up; outlines are LineWidth pixels wide.
+        private const int TileW = PixelConstants.TileWidthPx;
+        private const int TileH = PixelConstants.TileHeightPx;
+        private const int DiamondSlope = 2;
+        private const int OutlineWidth = 2;
+
+        // Stable per-cell hash for choosing sprite variants.
+        private const int HashPrimeX = 73856093;
+        private const int HashPrimeY = 19349663;
+        private const int HashShiftA = 13;
+        private const int HashShiftB = 16;
+        private const uint HashMultiplier = 1274126177u;
 
         private static readonly Color[] DigitColors =
         {
@@ -117,9 +149,15 @@ namespace MinefieldClerk.Field
                 Release(flags, cell);
                 return;
             }
-            SpriteRenderer flag = Spawn("Flag", flagSprite, Center(cell), PixelConstants.SortingOrderDefault);
+            // a glowing diamond on the ground marks exactly which cell is flagged; the flag with its small mound stands on it
+            var root = new GameObject("FlagRoot");
+            root.transform.SetParent(transform, false);
+            SpriteRenderer flag = Spawn("Flag", flagSprite, Center(cell), PixelConstants.SortingOrderDefault, root.transform);
             flag.spriteSortPoint = SpriteSortPoint.Pivot;
-            flags[cell.Flat()] = flag.gameObject;
+            Spawn("FlagCell", FlagCellSprite(), Center(cell) + new Vector3(0f, FlagCellOffsetY, 0f), OrderFlagCell, root.transform);
+            // pole and mound stay put; only the cloth waves (rebuilt pixel by pixel)
+            MinefieldClerk.Ambience.FlagCloth.Create(flag);
+            flags[cell.Flat()] = root;
         }
 
         private void OnMineArmed(Vector3Int cell, float fuse)
@@ -135,11 +173,11 @@ namespace MinefieldClerk.Field
             while (sr != null && armedMarkers.ContainsKey(key))
             {
                 float interval = FuseTiming.BeepInterval(t / fuse);
-                sr.color = new Color(1f, 0.35f, 0.3f);
-                yield return new WaitForSeconds(0.06f);
+                sr.color = ArmedFlash;
+                yield return new WaitForSeconds(PulseFlashSeconds);
                 if (sr == null || !armedMarkers.ContainsKey(key)) yield break;
                 sr.color = Color.white;
-                yield return new WaitForSeconds(Mathf.Max(0.02f, interval - 0.06f));
+                yield return new WaitForSeconds(Mathf.Max(PulseMinGap, interval - PulseFlashSeconds));
                 t += interval;
             }
         }
@@ -149,7 +187,7 @@ namespace MinefieldClerk.Field
             Vector3Int key = cell.Flat();
             if (armedMarkers.TryGetValue(key, out GameObject go) && go != null)
             {
-                go.GetComponent<SpriteRenderer>().color = new Color(0.55f, 0.55f, 0.6f);
+                go.GetComponent<SpriteRenderer>().color = DudColor;
             }
             armedMarkers.Remove(key);
         }
@@ -169,7 +207,7 @@ namespace MinefieldClerk.Field
             {
                 if (sr == null) yield break;
                 sr.sprite = frame;
-                yield return new WaitForSeconds(0.07f);
+                yield return new WaitForSeconds(BlastFrameSeconds);
             }
             if (sr != null) Destroy(sr.gameObject);
         }
@@ -206,9 +244,9 @@ namespace MinefieldClerk.Field
                     if (mines.IsProbed(cell) || mines.IsExploded(cell) || mines.IsMine(cell)) continue;
                     int n = mines.CountAround(cell);
                     if (n <= 0 || n >= digits.Length) continue;
-                    SpriteRenderer sr = Spawn("Hint " + n, digits[n], Center(cell), OrderRadar - 1);
+                    SpriteRenderer sr = Spawn("Hint " + n, digits[n], Center(cell), OrderHint);
                     Color c = DigitColors[Mathf.Clamp(n, 0, DigitColors.Length - 1)];
-                    c.a = 0.65f;
+                    c.a = HintAlpha;
                     sr.color = c;
                     revealedNumbers[cell] = sr.gameObject;
                 }
@@ -246,7 +284,7 @@ namespace MinefieldClerk.Field
             {
                 for (int y = 0; y < field.Height; y++)
                 {
-                    Vector3 pos = Center(new Vector3Int(x, y, 0)) + new Vector3(0f, 0.001f, 0f);
+                    Vector3 pos = Center(new Vector3Int(x, y, 0)) + new Vector3(0f, GridLift, 0f);
                     GridPiece(gridUpper, pos);
                     if (x == 0) GridPiece(gridLowerLeft, pos);
                     if (y == 0) GridPiece(gridLowerRight, pos);
@@ -256,29 +294,31 @@ namespace MinefieldClerk.Field
 
         private void GridPiece(Sprite sprite, Vector3 position)
         {
-            SpriteRenderer sr = Spawn("g", sprite, position, OrderProbed, gridRoot.transform);
+            SpriteRenderer sr = Spawn("g", sprite, position, OrderGrid, gridRoot.transform);
             sr.color = gridSoft;
         }
 
         private static Sprite MakeEdgeSprite(bool ul, bool ur, bool ll, bool lr)
         {
-            const int W = 32, H = 16;
+            const int W = TileW, H = TileH, Mid = TileW / 2;
             var tex = new Texture2D(W, H, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
             var px = new Color32[W * H];
-            var white = new Color32(255, 255, 255, 255);
-            void Set(int x, int rowTopDown) { px[(H - 1 - rowTopDown) * W + x] = white; }
+            void Set(int x, int rowTopDown) { px[(H - 1 - rowTopDown) * W + x] = EdgeColor; }
             for (int k = 0; k < H / 2; k++)
             {
-                int x0 = 16 - 2 * (k + 1);
-                int x1 = 16 + 2 * (k + 1) - 1;
-                if (ul) { Set(x0, k); Set(x0 + 1, k); }
-                if (ur) { Set(x1, k); Set(x1 - 1, k); }
-                if (ll) { Set(x0, H - 1 - k); Set(x0 + 1, H - 1 - k); }
-                if (lr) { Set(x1, H - 1 - k); Set(x1 - 1, H - 1 - k); }
+                int x0 = Mid - DiamondSlope * (k + 1);
+                int x1 = Mid + DiamondSlope * (k + 1) - 1;
+                for (int w = 0; w < OutlineWidth; w++)
+                {
+                    if (ul) Set(x0 + w, k);
+                    if (ur) Set(x1 - w, k);
+                    if (ll) Set(x0 + w, H - 1 - k);
+                    if (lr) Set(x1 - w, H - 1 - k);
+                }
             }
             tex.SetPixels32(px);
             tex.Apply();
-            return Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), PixelConstants.PixelsPerUnit);
+            return Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(Num.Half, Num.Half), PixelConstants.PixelsPerUnit);
         }
 
         // ---------------------------------------------------------------- helpers
@@ -286,8 +326,8 @@ namespace MinefieldClerk.Field
         /// <summary>Stable per-cell pick from a sprite set, so a cell always keeps the same look.</summary>
         private static Sprite PickFor(Sprite[] set, Vector3Int cell)
         {
-            uint h = (uint)(cell.x * 73856093 ^ cell.y * 19349663);
-            h ^= h >> 13; h *= 1274126177u; h ^= h >> 16;
+            uint h = (uint)(cell.x * HashPrimeX ^ cell.y * HashPrimeY);
+            h ^= h >> HashShiftA; h *= HashMultiplier; h ^= h >> HashShiftB;
             return set[h % (uint)set.Length];
         }
 
@@ -295,7 +335,33 @@ namespace MinefieldClerk.Field
         private SpriteRenderer SpawnMine(string objectName, Vector3Int cell)
         {
             Sprite sprite = PickFor(mineSprites, cell);
-            return Spawn(objectName, sprite, Center(cell) + new Vector3(0f, -sprite.bounds.size.y * 0.4f, 0f), 0);
+            // flat marker on the ground: always below standing things (player, props, flags)
+            return Spawn(objectName, sprite, Center(cell) + new Vector3(0f, -sprite.bounds.size.y * MineLiftShare, 0f), OrderMine);
+        }
+
+        private static Sprite flagCellSprite;
+
+        /// <summary>Cell-sized diamond (outline plus faint fill), bottom-center pivot.</summary>
+        private static Sprite FlagCellSprite()
+        {
+            if (flagCellSprite != null) return flagCellSprite;
+            const float CenterX = (TileW - 1) * Num.Half;
+            const int HalfH = TileH / 2;
+            var tex = new Texture2D(TileW, TileH, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+            for (int y = 0; y < TileH; y++)
+            {
+                int hw = (int)((y < HalfH ? y + Num.Half : TileH - 1 + Num.Half - y) * DiamondSlope);
+                for (int x = 0; x < TileW; x++)
+                {
+                    float dx = Mathf.Abs(x - CenterX);
+                    Color c = Color.clear;
+                    if (dx <= hw) c = dx >= hw - OutlineWidth ? FlagCellOutline : FlagCellFill;
+                    tex.SetPixel(x, y, c);
+                }
+            }
+            tex.Apply();
+            flagCellSprite = Sprite.Create(tex, new Rect(0, 0, TileW, TileH), new Vector2(Num.Half, 0f), PixelConstants.PixelsPerUnit);
+            return flagCellSprite;
         }
 
         private static void Release(Dictionary<Vector3Int, GameObject> map, Vector3Int cell)

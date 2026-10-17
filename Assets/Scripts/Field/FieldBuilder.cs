@@ -15,13 +15,33 @@ namespace MinefieldClerk.Field
         [SerializeField] private Tile borderTile;
         [SerializeField] private int fieldWidth = 24;
         [SerializeField] private int fieldHeight = 16;
-        [SerializeField] private int scenery = 8;
+        // Ground tiles around the plot. The camera sees about 16 cells past the player, so 22 keeps the edge of the ground
+        // off screen everywhere on the plot. A const, so an old scene value cannot shrink it.
+        private const int scenery = 22;
+        private const int BorderRing = 1;   // cells of border tile around the plot
+        [Tooltip("One in this many plot cells is dirt instead of grass")]
+        [SerializeField] private int dirtOneIn = 7;
         [Tooltip("-1 = new random field on every play")]
         [SerializeField] private int seed = -1;
 
+        /// <summary>Size of the field (Medium) the scenery was laid out around. Other sizes stretch the layout from it.</summary>
+        private const int StartColumnDivisor = 2;   // the player starts in the middle column
+        public const int AnchorWidth = 24;
+        public const int AnchorHeight = 16;
+
+        /// <summary>World offset of the field grid (none: cell (0,0) is the world origin, the props move instead).</summary>
+        public Vector3 Origin => Vector3.zero;
+
         public int Width => fieldWidth;
         public int Height => fieldHeight;
-        public Vector3Int StartCell => new Vector3Int(fieldWidth / 2, 0, 0);
+        public Vector3Int StartCell => new Vector3Int(fieldWidth / StartColumnDivisor, 0, 0);
+
+        /// <summary>Sets the plot size for the next Build (difficulty presets).</summary>
+        public void Resize(int width, int height)
+        {
+            fieldWidth = Mathf.Max(DifficultySettings.MinFieldSide, width);
+            fieldHeight = Mathf.Max(DifficultySettings.MinFieldSide, height);
+        }
 
         /// <summary>Used by the editor art menu to wire up the tiles.</summary>
         public void Configure(Tilemap groundMap, Tile[] grass, Tile dirt, Tile border)
@@ -56,21 +76,22 @@ namespace MinefieldClerk.Field
                 return;
             }
 
+            ground.layoutGrid.transform.position = Origin;
             ground.ClearAllTiles();
             var rng = seed >= 0 ? new System.Random(seed) : new System.Random();
 
-            int min = -1 - scenery;
-            for (int x = min; x <= fieldWidth + scenery; x++)
+            int min = -BorderRing - scenery;
+            for (int x = min; x <= fieldWidth - 1 + BorderRing + scenery; x++)
             {
-                for (int y = min; y <= fieldHeight + scenery; y++)
+                for (int y = min; y <= fieldHeight - 1 + BorderRing + scenery; y++)
                 {
                     bool inPlot = x >= 0 && x < fieldWidth && y >= 0 && y < fieldHeight;
-                    bool inPlotOrRing = x >= -1 && x <= fieldWidth && y >= -1 && y <= fieldHeight;
+                    bool inPlotOrRing = x >= -BorderRing && x <= fieldWidth - 1 + BorderRing && y >= -BorderRing && y <= fieldHeight - 1 + BorderRing;
 
                     Tile tile;
                     if (inPlot)
                     {
-                        tile = (dirtTile != null && rng.Next(7) == 0) ? dirtTile : grassTiles[rng.Next(grassTiles.Length)];
+                        tile = (dirtTile != null && rng.Next(dirtOneIn) == 0) ? dirtTile : grassTiles[rng.Next(grassTiles.Length)];
                     }
                     else if (inPlotOrRing && borderTile != null)
                     {

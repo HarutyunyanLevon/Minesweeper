@@ -16,11 +16,15 @@ namespace MinefieldClerk.EditorTools
     /// </summary>
     public static class SpriteCookFetch
     {
+        private const string RootFolder = "RawDownloads";
+        private const string QueueFile = "queue.json";
+        private const int PollMilliseconds = 30;
+
         [MenuItem("Minefield/Assets/Fetch Queue")]
         public static void Fetch()
         {
-            string root = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "RawDownloads"));
-            string queuePath = Path.Combine(root, "queue.json");
+            string root = Path.GetFullPath(Path.Combine(Application.dataPath, "..", RootFolder));
+            string queuePath = Path.Combine(root, QueueFile);
             if (!File.Exists(queuePath))
             {
                 Debug.LogError("[Fetch] No queue at " + queuePath);
@@ -35,7 +39,7 @@ namespace MinefieldClerk.EditorTools
                 using (UnityWebRequest req = UnityWebRequest.Get(item.url))
                 {
                     UnityWebRequestAsyncOperation op = req.SendWebRequest();
-                    while (!op.isDone) Thread.Sleep(30);
+                    while (!op.isDone) Thread.Sleep(PollMilliseconds);
                     if (req.result == UnityWebRequest.Result.Success)
                     {
                         Directory.CreateDirectory(Path.GetDirectoryName(target));

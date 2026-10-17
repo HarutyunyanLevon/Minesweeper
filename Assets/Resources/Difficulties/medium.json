@@ -1,0 +1,28 @@
+{
+  "name": "Medium",
+  "sizes": [
+    { "width": 15, "height": 13 },
+    { "width": 16, "height": 13 },
+    { "width": 15, "height": 14 },
+    { "width": 16, "height": 14 },
+    { "width": 15, "height": 15 },
+    { "width": 16, "height": 15 },
+    { "width": 16, "height": 16 }
+  ],
+  "mines": 40,
+
+  "batterySeconds": 120,
+  "payPerFlag": 10,
+  "wrongFlagPenalty": 10,
+  "quotaBonus": 25,
+  "medicineCost": 15,
+  "quotaPerDay": 1,
+
+  "quotaBase": 12,
+  "quotaMaxShare": 0.8,
+
+  "radarBattery": 1.0,
+  "moneyEarn": 1.0,
+  "moneySpend": 1.0,
+  "encounterRate": 1.0
+}
