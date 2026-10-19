@@ -2,22 +2,27 @@
   "surname": "Kovalev",
   "pages": [
     {
+      "poster": "poster_land",
       "title": "DECREE ON LAND RECLAMATION",
-      "text": "Citizen {surname}! The enemy has gone, but his iron seeds still lie in our fields. Every furrow you clear is a furrow returned to the people. Our fathers raised this country from ashes with bare hands. The Republic is counting on you. Go forth and be worthy of your name."
+      "text": "Citizen {surname}! Remember why you take the field. Behind you stand your wife and your children, waiting at the table. Every furrow you clear is bread returned to a house, and a field returned to the people. The Republic is counting on you, and your family is counting on you too. Come home to them."
     },
     {
+      "poster": "poster_detector",
       "title": "ON THE STATE DETECTOR",
       "text": "The detector is the pride of our industry, forged by the workers of the Republic for your use. Its numbers tell how many mines lie in the eight plots around an examined plot. Handle it with care and gratitude, for its strength is not endless, and a spent battery serves no one."
     },
     {
+      "poster": "poster_flag",
       "title": "ON THE FLAG OF THE MINISTRY",
       "text": "The flag marks a mine found, and the flag of the Republic is safe to tread, as it has always been. Our defuse team will come to every flag in good time. Mark with a steady hand: a flag placed in error sends our specialists to dig in vain, and the waste is charged to the careless."
     },
     {
+      "poster": "poster_quota",
       "title": "ON QUOTAS AND WAGES",
       "text": "A nation is built by those who do their share. The Republic is generous to the citizen who meets his quota, and adds a bonus of {quotaBonus} from the people's treasury. The citizen who falls short will be reminded of it."
     },
     {
+      "poster": "poster_injury",
       "title": "ON INJURY AND SACRIFICE",
       "text": "Fortune is not always kind to the brave. A wounded citizen may buy treatment for {medicineCost} and return to the furrow, where the Republic awaits him. Do not despair. Do not linger."
     }

@@ -1,10 +1,8 @@
 {
   "id": "collect_mines",
+  "poster": "poster_collect",
   "title": "DELIVERY OF ORDNANCE",
   "text": "The demand for ordnance is great, and our defuse team cannot meet it alone. The Ministry entrusts you with defuse kits. Flag the mine, defuse it, deliver it to the Republic. Kits are limited. A kit wasted on empty soil is a kit taken from a comrade.",
-
-  "firstDay": 1,
-  "chance": 1.0,
 
   "defuseKits": 7,
   "defuseSeconds": 4,

@@ -1,0 +1,8 @@
+{
+  "defaultRules": ["basic"],
+  "days": [
+    { "day": 1, "rules": ["basic"] },
+    { "day": 2, "rules": ["basic"] },
+    { "day": 3, "rules": ["basic"] }
+  ]
+}

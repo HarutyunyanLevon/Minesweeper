@@ -17,6 +17,8 @@ namespace MinefieldClerk.DevTools
         private const float DifficultyTop = 198f, DifficultyWidth = 400f, DifficultyHeight = 44f;
         private const float DifficultyGap = 8f;
         private const float HudAreaHeight = 92f;
+        private const float SwitchWidth = 110f, SwitchHeight = 34f, SwitchMargin = 10f;
+        private const string SwitchOn = "DEV: ON (F10)", SwitchOff = "DEV (F10)";
 
         private static readonly Color TextColor = new Color(1f, 0.94f, 0.78f);
         private static readonly Rect ButtonRect = new Rect(Margin, ButtonTop, ButtonWidth, ButtonHeight);
@@ -29,17 +31,27 @@ namespace MinefieldClerk.DevTools
 
         private GUIStyle style;
         private MineFieldView view;
+        private Day.DayManager day;
         private FieldSession session;
 
         /// <summary>True when a screen position (origin bottom-left) is over the HUD buttons.</summary>
         public static bool IsOverUi(Vector2 screen)
         {
             float y = Screen.height - screen.y;
-            return HudArea.Contains(new Vector2(screen.x, y));
+            var point = new Vector2(screen.x, y);
+            if (SwitchRect().Contains(point)) return true;
+            return DevMode.Enabled && HudArea.Contains(point);
+        }
+
+        private static Rect SwitchRect()
+        {
+            return new Rect(SwitchMargin, Screen.height - SwitchHeight - SwitchMargin, SwitchWidth, SwitchHeight);
         }
 
         private void Update()
         {
+            DevMode.PollKey();
+            if (!DevMode.Enabled) return;
             if (view == null) view = FindAnyObjectByType<MineFieldView>();
             var kb = UnityEngine.InputSystem.Keyboard.current;
             if (view != null && kb != null && kb.nKey.wasPressedThisFrame)
@@ -54,6 +66,10 @@ namespace MinefieldClerk.DevTools
 
         private void OnGUI()
         {
+            if (day == null) day = FindAnyObjectByType<Day.DayManager>();
+            if (day != null && day.BookOpen) return;   // the Book covers the readout
+            if (GUI.Button(SwitchRect(), DevMode.Enabled ? SwitchOn : SwitchOff)) DevMode.Toggle();
+            if (!DevMode.Enabled) return;
             if (style == null)
             {
                 style = new GUIStyle(GUI.skin.label) { fontSize = FontSize, fontStyle = FontStyle.Bold };

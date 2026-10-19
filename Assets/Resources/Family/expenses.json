@@ -1,0 +1,6 @@
+{"items":[
+{"id":"bills","label":"Pay the bills","cost":40,"kind":"bills","placeholder":false},
+{"id":"medicine","label":"Medicine","cost":0,"kind":"medicine","placeholder":false},
+{"id":"groceries","label":"Groceries","cost":30,"kind":"groceries","placeholder":false},
+{"id":"family","label":"Send home","cost":20,"kind":"family","placeholder":true}
+]}

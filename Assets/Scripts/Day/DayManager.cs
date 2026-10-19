@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using MinefieldClerk.Family;
 using MinefieldClerk.Field;
 using MinefieldClerk.Player;
 using MinefieldClerk.Rules;
@@ -26,25 +27,14 @@ namespace MinefieldClerk.Day
         public static DayManager Instance { get; private set; }
 
         // IMGUI placeholder layout (pixels) and look.
-        private const int SmallFont = 20, BigFont = 26, TitleFont = 34;
+        private const int SmallFont = 20, BigFont = 26;
         private const float DimMax = 0.35f;                     // darkest overlay when the battery is empty
-        private const float LowBatteryShare = 0.25f;            // below this the bar turns red
-        private const float PanelWidth = 320f, PanelMargin = 20f, PanelTop = 10f, RowHeight = 30f;
-        private const float Row2Top = 38f, BarTop = 70f, BarHeight = 20f, BarInset = 2f, LabelTop = 92f, HintTop = 118f, HintExtra = 40f;
-        private const float RuleRowTop = HintTop + RowHeight;
         private const float ToastWidth = 960f, ToastHeight = 40f, ToastBottomGap = 80f;
         private const float ToastSeconds = 2.5f;
-        private const float DebriefWidth = 760f, DebriefHeight = 460f;
-        private const float TitleTop = 14f, TitleHeight = 50f, LinesTop = 80f, LineSidePad = 30f, LineGap = 6f;
-        private const float ButtonWidth = 320f, ButtonHeight = 50f, ButtonBottomGap = 70f;
         private const string ObjectName = "DayManager";
 
         private static readonly Color TextColor = new Color(1f, 0.94f, 0.78f);
         private static readonly Color DimColor = new Color(0.12f, 0.05f, 0.2f);
-        private static readonly Color BarBack = new Color(0f, 0f, 0f, 0.6f);
-        private static readonly Color BarGood = new Color(0.5f, 0.9f, 0.4f);
-        private static readonly Color BarLow = new Color(0.95f, 0.35f, 0.25f);
-        private static readonly Color PanelColor = new Color(0.1f, 0.08f, 0.06f, 0.95f);
 
         // Battery length, pay, quota and medicine numbers live in the difficulty JSON files
         // (Assets/Resources/Difficulties), see DifficultySettings.
@@ -52,16 +42,20 @@ namespace MinefieldClerk.Day
         [Tooltip("Seconds after a fatal blast before the debrief opens")]
         [SerializeField] private float deathDelay = 2.5f;
 
-        private const string BookHeading = "BOOK OF REGULATIONS";
-        private const string BookBasicSection = "Basic decree of the Ministry";
-        private const string BookSpecialSection = "Directive of the day";
+        private const int OverlayDepth = -100;   // lower depth is drawn on top of the dev readout
+        private const string BookPrefab = "UI/Windows/RulebookWindow", DebriefPrefab = "UI/Windows/DebriefWindow";
         private const string BookStamp = "AMENDED";
         private const string BookFooter = "A / D or arrow keys: turn the page      B: close the Book";
-        private const string BriefingHeading = "DAILY DIRECTIVE - DAY ";
-        private const string BriefingFooterPrefix = "Enter: begin the shift      The Republic is counting on you, citizen ";
+        private const string BriefingFooterPrefix = "A / D: turn the page      Enter or B: begin the shift      The Republic is counting on you, citizen ";
+        private const string EndBlockedText = "The quota is not met. The shift continues.";
         private const string WorkHint = "Hold E: disarm / lift ordnance";
+        private const string HudKeyHint = "Enter: end the day   B: rulebook";
+        private const string HudKeyHintLocked = "B: rulebook";
 
-        private readonly RulePaper paper = new RulePaper();
+        private RulebookWindow bookWin;
+        private DebriefWindow debriefWin;
+        private int bookShown;   // 0 none, 1 briefing, 2 opened in the field
+        private readonly DayHud hud = new DayHud();
         private readonly Rulebook rulebook = new Rulebook();
         private RuleSet rules = RuleSet.Empty;
         private int probesToday;
@@ -76,11 +70,13 @@ namespace MinefieldClerk.Day
         private float battery;
         private float deathTimer;
         private bool carryInjured;
-        private readonly List<string> report = new List<string>();
         private string reportTitle = "";
         private string toast = "";
         private float toastUntil;
-        private GUIStyle small, big, title, wrapped, toastStyle;
+        private GUIStyle small, big, toastStyle;
+
+        /// <summary>Ids of optional expenses skipped last evening (the family system reacts to these later).</summary>
+        public readonly List<string> UnpaidExpenses = new List<string>();
 
         public DayPhase Phase { get; private set; } = DayPhase.Playing;
         public int Day { get; private set; } = 1;
@@ -88,6 +84,8 @@ namespace MinefieldClerk.Day
         public bool Playing => Phase == DayPhase.Playing;
         /// <summary>The shift is running and the rulebook is shut: the deminer may act.</summary>
         public bool CanAct => Playing && !showRulebook;
+        /// <summary>The Book of Regulations is open over the field.</summary>
+        public bool BookOpen => showRulebook;
         /// <summary>The rules in force today.</summary>
         public RuleSet Rules => rules;
         /// <summary>Defuse kits still in the bag (0 on days without the collect-mines rule).</summary>
@@ -156,6 +154,32 @@ namespace MinefieldClerk.Day
             mines = FindAnyObjectByType<MineField>();
             health = FindAnyObjectByType<PlayerHealth>();
             player = FindAnyObjectByType<PlayerController>();
+            bookWin = UiCanvas.Spawn<RulebookWindow>(BookPrefab);
+            debriefWin = UiCanvas.Spawn<DebriefWindow>(DebriefPrefab);
+            if (bookWin != null) { bookWin.Hide(); bookWin.Closed += OnBookClosed; }
+            if (debriefWin != null) { debriefWin.Hide(); debriefWin.Finished += NextDay; }
+        }
+
+        private void LateUpdate()
+        {
+            SyncBook();
+        }
+
+        /// <summary>Shows or hides the book window to match the phase.</summary>
+        private void SyncBook()
+        {
+            if (bookWin == null) return;
+            int want = Phase == DayPhase.Briefing ? 1 : (Phase == DayPhase.Playing && showRulebook ? 2 : 0);
+            if (want == bookShown) return;
+            bookShown = want;
+            if (want == 0) bookWin.Hide();
+            else bookWin.Show(rulebook, BookStamp, want == 1 ? BriefingFooterPrefix + BasicRules.Surname : BookFooter);
+        }
+
+        private void OnBookClosed()
+        {
+            if (Phase == DayPhase.Briefing) StartShift();
+            else ToggleRulebook();
         }
 
         private void OnEnable()
@@ -175,7 +199,8 @@ namespace MinefieldClerk.Day
             probesToday = 0;
             kitsUsed = 0;
             showRulebook = false;
-            rulebook.Rebuild(Day, rules, session.Settings);
+            bookShown = 0;   // the window is shown again for the new briefing
+            rulebook.Rebuild(Day, rules);
             battery = MaxBattery;
             deathTimer = 0f;
             // A new field can start straight from a debrief (difficulty change, R). With rules in force the shift
@@ -192,7 +217,8 @@ namespace MinefieldClerk.Day
             if (Phase == DayPhase.Briefing)
             {
                 player.Frozen = true;   // the health reset runs after the field is generated and would unfreeze the deminer
-                if (enter) StartShift();
+                TurnPagesByKey(kb);
+                if (enter || (kb != null && kb.bKey.wasPressedThisFrame)) StartShift();   // B closes the book it opened with
                 return;
             }
 
@@ -203,13 +229,10 @@ namespace MinefieldClerk.Day
                 {
                     // Reading is free: the deminer stands still and the detector clock stops.
                     player.Frozen = true;
-                    if (kb != null)
-                    {
-                        if (kb.leftArrowKey.wasPressedThisFrame || kb.aKey.wasPressedThisFrame) rulebook.Turn(-1);
-                        if (kb.rightArrowKey.wasPressedThisFrame || kb.dKey.wasPressedThisFrame) rulebook.Turn(1);
-                    }
+                    TurnPagesByKey(kb);
                     return;
                 }
+                if (DevTools.DevMode.Enabled && kb != null && kb.f9Key.wasPressedThisFrame) { EndDay(); return; }   // dev: skip the quota gate
                 if (!BatteryEmpty) battery = Mathf.Max(0f, battery - Time.deltaTime);
 
                 if (health.Dead)
@@ -220,13 +243,25 @@ namespace MinefieldClerk.Day
                 else if (enter)
                 {
                     if (mines.HasArmed) Notify("A fuse is still burning.");
+                    else if (!BatteryEmpty && !QuotaMet) Notify(EndBlockedText);
                     else EndDay();
                 }
             }
-            else if (enter)
+            else if (enter && debriefWin != null && debriefWin.Advance())
             {
                 NextDay();
             }
+        }
+
+        private void TurnPagesByKey(Keyboard kb)
+        {
+            if (kb == null) return;
+            int step = 0;
+            if (kb.leftArrowKey.wasPressedThisFrame || kb.aKey.wasPressedThisFrame) step--;
+            if (kb.rightArrowKey.wasPressedThisFrame || kb.dKey.wasPressedThisFrame) step++;
+            if (step == 0) return;
+            rulebook.Turn(step);
+            if (bookWin != null) bookWin.Refresh();
         }
 
         private void ToggleRulebook()
@@ -252,15 +287,23 @@ namespace MinefieldClerk.Day
             player.Frozen = health.Dead;
         }
 
+        /// <summary>Quota reached: flags and located duds, or mines collected under the collect rule.</summary>
+        private bool QuotaMet
+        {
+            get
+            {
+                mines.Tally(out int correct, out int wrong);
+                return (rules.CollectMines ? mines.CollectedCount : correct + mines.DudCount) >= Quota;
+            }
+        }
+
         public void EndDay()
         {
             mines.Tally(out int correct, out int wrong);
             int located = correct + mines.DudCount;                  // flagged mines and exposed duds
             int inGround = correct + mines.UncollectedDudCount;      // located but not collected
-            int flagsPlaced = mines.FlagCount;
             bool collecting = rules.CollectMines;
-            int counted = collecting ? mines.CollectedCount : located;   // what the quota counts
-            bool quotaMet = counted >= Quota;
+            bool quotaMet = QuotaMet;
 
             DifficultySettings cfg = session.Settings;
             int flagPay = Earned(cfg.payPerFlag);
@@ -270,90 +313,104 @@ namespace MinefieldClerk.Day
             int probesOver = rules.OverLimit(probesToday);
             int probeFines = probesOver * rules.ProbeFine;
 
-            report.Clear();
+            List<ReportRow> rows = new List<ReportRow>();
             int pay;
             if (collecting)
             {
                 int collectedPay = mines.CollectedCount * rules.CollectPay;
                 int groundFines = inGround * rules.UncollectedFine;
                 pay = collectedPay - groundFines - wrong * penalty;
-                report.Add("Mines collected: " + mines.CollectedCount + " x " + rules.CollectPay + " = " + collectedPay);
-                report.Add("Defuse kits used: " + kitsUsed + " of " + rules.DefuseKits);
-                if (inGround > 0) report.Add("Ordnance abandoned in the field: " + inGround + " x -" + rules.UncollectedFine);
+                rows.Add(Row("Mines collected  " + mines.CollectedCount + " x " + rules.CollectPay, "+" + collectedPay));
+                rows.Add(Row("Defuse kits used", kitsUsed + " of " + rules.DefuseKits));
+                if (inGround > 0) rows.Add(Row("Ordnance left in the field  " + inGround + " x " + rules.UncollectedFine, "-" + groundFines, true));
             }
             else
             {
                 pay = located * flagPay - wrong * penalty;
-                report.Add("Mines located (flagged or exposed): " + located + " x " + flagPay + " = " + (located * flagPay));
+                rows.Add(Row("Mines located  " + located + " x " + flagPay, "+" + located * flagPay));
             }
             Money += pay + bonus - probeFines;
 
-            if (penalty > 0) report.Add("Specialists sent in vain: " + wrong + " x -" + penalty);
-            else if (wrong > 0) report.Add("Specialists sent in vain: " + wrong + " (noted)");
+            if (penalty > 0 && wrong > 0) rows.Add(Row("Specialists sent in vain  " + wrong + " x " + penalty, "-" + wrong * penalty, true));
+            else if (wrong > 0) rows.Add(Row("Specialists sent in vain", wrong.ToString(), true));
             if (rules.HasProbeLimit)
             {
-                report.Add("Probe limit " + rules.ProbeCap + ": " + probesToday + " used" +
-                           (probesOver > 0 ? ", " + probesOver + " beyond allowance x -" + rules.ProbeFine : ", within allowance"));
+                rows.Add(Row("Probe limit " + rules.ProbeCap + "  used " + probesToday, probesOver > 0 ? "-" + probeFines : "within allowance", probesOver > 0));
             }
-            report.Add("Quota " + Quota + (collecting ? " collected" : "") + ": " + (quotaMet ? "MET, bonus +" + bonusPay : "NOT MET. The shortfall is noted."));
-            report.Add("Mines exploded: " + mines.ExplodedCount + "    Tiles probed: " + mines.ProbedCount + "    Flags placed: " + flagsPlaced);
+            rows.Add(quotaMet ? Row("Quota " + Quota + " fulfilled", "+" + bonusPay) : Row("Quota " + Quota + " not fulfilled", "noted", true));
+            rows.Add(Row("Exploded " + mines.ExplodedCount + "   Probed " + mines.ProbedCount + "   Flags " + mines.FlagCount, ""));
 
             carryInjured = false;
+            List<ExpenseLine> lines = new List<ExpenseLine>();
             if (health.Dead)
             {
                 reportTitle = "REGISTER ENTRY CLOSED - DAY " + Day;
-                report.Add("Citizen " + BasicRules.Surname + " is struck from the register.");
-                report.Add("A brother takes your boots and your place at the gate. The family still has to eat.");
+                rows.Add(Row("Citizen " + BasicRules.Surname + " is struck from the register.", "", true));
+                rows.Add(Row("A brother takes your boots and your place at the gate.", ""));
             }
             else
             {
-                reportTitle = "DEBRIEF - DAY " + Day;
-                if (health.Injured)
-                {
-                    int medicine = Spent(session.Settings.medicineCost);
-                    if (Money >= medicine)
-                    {
-                        Money -= medicine;
-                        report.Add("Medicine: -" + medicine + " (injury treated)");
-                    }
-                    else
-                    {
-                        carryInjured = true;
-                        report.Add("Treatment declined: insufficient funds. Report for duty as you are.");
-                    }
-                }
+                reportTitle = "STATE REPORT - DAY " + Day;
+                lines = BuildExpenses();
             }
-            report.Add("");
-            report.Add("Money: " + Money);
+            rows.Add(Row("Balance", Money.ToString()));
 
+            debriefWin.Open(reportTitle, rows, lines, Money);
             Phase = DayPhase.Debrief;
             player.Frozen = true;
         }
 
+        private static ReportRow Row(string label, string value, bool bad = false)
+        {
+            return new ReportRow { Label = label, Value = value, Bad = bad };
+        }
+
+        /// <summary>Optional expenses for the family page; all start ticked while the money lasts.</summary>
+        private List<ExpenseLine> BuildExpenses()
+        {
+            List<ExpenseLine> result = new List<ExpenseLine>();
+            int left = Money;
+            foreach (ExpenseDef def in ExpenseTable.Load())
+            {
+                bool medicine = def.kind == ExpenseTable.KindMedicine;
+                if (medicine && !health.Injured) continue;
+                int cost = Spent(medicine ? session.Settings.medicineCost : def.cost);
+                bool afford = cost <= left;
+                if (afford) left -= cost;
+                result.Add(new ExpenseLine { Def = def, Cost = cost, Checked = afford });
+            }
+            return result;
+        }
+
         public void NextDay()
         {
+            carryInjured = false;
+            UnpaidExpenses.Clear();
+            if (debriefWin != null) debriefWin.Hide();
+            foreach (ExpenseLine l in debriefWin.Lines)
+            {
+                if (l.Checked) Money -= l.Cost;
+                else
+                {
+                    UnpaidExpenses.Add(l.Def.id);   // placeholder: the family system will react to these
+                    if (l.Def.kind == ExpenseTable.KindMedicine) carryInjured = true;
+                }
+            }
             Day++;
             session.NewDay();   // regenerates the field; OnRegenerated resets battery and phase
             if (carryInjured) health.Hit();
             carryInjured = false;
         }
 
-        private void DrawRulebook()
-        {
-            int turn = paper.DrawPage(BookHeading, rulebook.IsSpecialPage ? BookSpecialSection : BookBasicSection,
-                rulebook.Current, rulebook.Index, rulebook.PageCount, rulebook.Slogan, rulebook.IsChangedPage ? BookStamp : "", BookFooter);
-            rulebook.Turn(turn);
-        }
-
         private void OnGUI()
         {
+            GUI.depth = OverlayDepth;
             if (small == null)
             {
                 small = new GUIStyle(GUI.skin.label) { fontSize = SmallFont, fontStyle = FontStyle.Bold };
                 small.normal.textColor = TextColor;
+                small.hover.textColor = small.active.textColor = small.focused.textColor = TextColor;   // IMGUI labels turn white on hover otherwise
                 big = new GUIStyle(small) { fontSize = BigFont };
-                title = new GUIStyle(small) { fontSize = TitleFont, alignment = TextAnchor.MiddleCenter };
-                wrapped = new GUIStyle(big) { wordWrap = true };
                 toastStyle = new GUIStyle(big) { alignment = TextAnchor.UpperCenter };
             }
 
@@ -364,65 +421,19 @@ namespace MinefieldClerk.Day
             GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
             GUI.color = Color.white;
 
-            // Battery and day readout, top right.
-            float w = PanelWidth, x = Screen.width - w - PanelMargin;
-            GUI.Label(new Rect(x, PanelTop, w, RowHeight), "Day " + Day + " (" + DifficultyName + ")   Money " + Money, small);
-            GUI.Label(new Rect(x, Row2Top, w, RowHeight),
-                rules.CollectMines ? "Collected " + mines.CollectedCount + " / quota " + Quota : "Flags " + mines.FlagCount + " / quota " + Quota, small);
-            GUI.color = BarBack;
-            GUI.DrawTexture(new Rect(x, BarTop, w, BarHeight), Texture2D.whiteTexture);
-            GUI.color = Battery01 > LowBatteryShare ? BarGood : BarLow;
-            GUI.DrawTexture(new Rect(x + BarInset, BarTop + BarInset, (w - BarInset * 2f) * Battery01, BarHeight - BarInset * 2f), Texture2D.whiteTexture);
-            GUI.color = Color.white;
-            GUI.Label(new Rect(x, LabelTop, w, RowHeight), BatteryEmpty ? "DETECTOR DEAD" : "Detector battery", small);
-            if (Playing)
+            if (Phase == DayPhase.Playing && !showRulebook) hud.Draw(new HudState
             {
-                GUI.Label(new Rect(x - HintExtra, HintTop, w + HintExtra, RowHeight), "Enter: end the day   B: rulebook", small);
-                float ruleRow = RuleRowTop;
-                if (rules.HasProbeLimit)
-                {
-                    GUI.contentColor = probesToday > rules.ProbeCap ? BarLow : Color.white;
-                    GUI.Label(new Rect(x, ruleRow, w, RowHeight), "Probes " + probesToday + " / " + rules.ProbeCap, small);
-                    GUI.contentColor = Color.white;
-                    ruleRow += RowHeight;
-                }
-                if (rules.CollectMines)
-                {
-                    GUI.contentColor = KitsLeft == 0 ? BarLow : Color.white;
-                    GUI.Label(new Rect(x, ruleRow, w, RowHeight), "Defuse kits " + KitsLeft + " / " + rules.DefuseKits, small);
-                    GUI.contentColor = Color.white;
-                    ruleRow += RowHeight;
-                    GUI.Label(new Rect(x - HintExtra, ruleRow, w + HintExtra, RowHeight), WorkHint, small);
-                }
-            }
+                Day = Day, Difficulty = DifficultyName, Money = Money,
+                CollectMode = rules.CollectMines, Collected = mines.CollectedCount, Flags = mines.FlagCount, Quota = Quota,
+                Battery01 = Battery01, BatteryEmpty = BatteryEmpty, Playing = Playing,
+                HasProbeLimit = rules.HasProbeLimit, Probes = probesToday, ProbeCap = rules.ProbeCap,
+                HasKits = rules.CollectMines, KitsLeft = KitsLeft, KitsTotal = rules.DefuseKits,
+                KeyHint = (BatteryEmpty || QuotaMet) ? HudKeyHint : HudKeyHintLocked, WorkHint = WorkHint,
+            });
 
             if (Time.time < toastUntil)
             {
                 GUI.Label(new Rect(Screen.width * Num.Half - ToastWidth * Num.Half, Screen.height - ToastBottomGap, ToastWidth, ToastHeight), toast, toastStyle);
-            }
-
-            if (Phase == DayPhase.Briefing) paper.Draw(BriefingHeading + Day, BriefingFooterPrefix + BasicRules.Surname, BasicRules.SloganFor(Day), rules);
-            else if (Phase == DayPhase.Playing && showRulebook) DrawRulebook();
-
-            if (Phase == DayPhase.Debrief)
-            {
-                Rect box = new Rect(Screen.width * Num.Half - DebriefWidth * Num.Half, Screen.height * Num.Half - DebriefHeight * Num.Half, DebriefWidth, DebriefHeight);
-                GUI.color = PanelColor;
-                GUI.DrawTexture(box, Texture2D.whiteTexture);
-                GUI.color = Color.white;
-                GUI.Label(new Rect(box.x, box.y + TitleTop, box.width, TitleHeight), reportTitle, title);
-                float y = box.y + LinesTop;
-                foreach (string line in report)
-                {
-                    float textWidth = box.width - LineSidePad * 2f;
-                    float lineHeight = wrapped.CalcHeight(new GUIContent(line), textWidth);
-                    GUI.Label(new Rect(box.x + LineSidePad, y, textWidth, lineHeight), line, wrapped);
-                    y += lineHeight + LineGap;
-                }
-                if (GUI.Button(new Rect(box.center.x - ButtonWidth * Num.Half, box.yMax - ButtonBottomGap, ButtonWidth, ButtonHeight), "Next day (Enter)"))
-                {
-                    NextDay();
-                }
             }
         }
     }

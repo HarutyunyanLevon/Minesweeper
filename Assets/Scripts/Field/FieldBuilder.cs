@@ -62,6 +62,16 @@ namespace MinefieldClerk.Field
             return ground.WorldToCell(world);
         }
 
+        /// <summary>
+        /// Position in cell units without rounding: cell (x, y) spans x..x+1 and y..y+1, its centre is (x+0.5, y+0.5).
+        /// Lets the player's body be measured against cells (area overlap) instead of only the cell under the feet.
+        /// </summary>
+        public Vector2 WorldToCellInterpolated(Vector3 world)
+        {
+            Vector3 cell = ground.layoutGrid.LocalToCellInterpolated(ground.layoutGrid.WorldToLocal(world));
+            return new Vector2(cell.x, cell.y);
+        }
+
         public Vector3 CellToWorld(Vector3Int cell)
         {
             return ground.GetCellCenterWorld(cell);

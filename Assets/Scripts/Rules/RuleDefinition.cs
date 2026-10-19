@@ -9,6 +9,8 @@ namespace MinefieldClerk.Rules
     {
         public const string ProbeLimit = "probe_limit";
         public const string CollectMines = "collect_mines";
+        /// <summary>Not a rule file: the entry in a day's rule list that stands for the always-valid decrees of basic_rules.json.</summary>
+        public const string Basic = "basic";
 
         public static bool IsKnown(string id)
         {
@@ -30,10 +32,8 @@ namespace MinefieldClerk.Rules
         public string title;
         /// <summary>Body text of the rule, with optional number tokens.</summary>
         public string text;
-        /// <summary>First campaign day on which the rule can appear.</summary>
-        public int firstDay = 1;
-        /// <summary>Chance (0..1) that an unlocked rule is in force on a given day. 1 = every day.</summary>
-        public float chance = 1f;
+        /// <summary>Poster shown beside the rule in the rulebook (file name in Resources/Rulebook/Posters, no extension).</summary>
+        public string poster;
 
         // ---- probe_limit
         /// <summary>Probes allowed per day for every mine on the field.</summary>
@@ -60,8 +60,6 @@ namespace MinefieldClerk.Rules
             problem = null;
             if (!RuleIds.IsKnown(id)) problem = "unknown id '" + id + "'";
             else if (string.IsNullOrEmpty(title)) problem = "no title";
-            else if (firstDay < 1) problem = "firstDay must be at least 1";
-            else if (chance < 0f || chance > 1f) problem = "chance must be between 0 and 1";
             else if (id == RuleIds.ProbeLimit && probeCapPerMine <= 0f) problem = "probeCapPerMine must be above 0";
             else if (id == RuleIds.CollectMines && (defuseSeconds <= 0f || collectSeconds <= 0f)) problem = "defuseSeconds and collectSeconds must be above 0";
             else if (id == RuleIds.CollectMines && defuseKits <= 0) problem = "defuseKits must be above 0";
@@ -70,7 +68,7 @@ namespace MinefieldClerk.Rules
         }
     }
 
-    /// <summary>All rule files, loaded once from Assets/Resources/Rules and sorted by first day, then id, so the daily pick and the page order are stable.</summary>
+    /// <summary>All rule files, loaded once from Assets/Resources/Rules. Which of them are in force on a day is decided by Resources/Days/days.json (DaySchedule).</summary>
     public static class RuleTable
     {
         public const string ResourceFolder = "Rules";
@@ -116,9 +114,17 @@ namespace MinefieldClerk.Rules
                 }
                 rules.Add(rule);
             }
-            // Oldest rules first, so the newest rule is the last one on the rulebook's special pages.
-            rules.Sort((a, b) => a.firstDay != b.firstDay ? a.firstDay.CompareTo(b.firstDay) : string.CompareOrdinal(a.id, b.id));
             return rules;
+        }
+
+        /// <summary>The rule with this id, or null when there is no valid file for it.</summary>
+        public static RuleDefinition Find(string id)
+        {
+            foreach (RuleDefinition rule in All)
+            {
+                if (rule.id == id) return rule;
+            }
+            return null;
         }
     }
 }

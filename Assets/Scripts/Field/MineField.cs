@@ -37,7 +37,7 @@ namespace MinefieldClerk.Field
     /// Walking never triggers mines; only probing does. A radar number is the count of mines within `radius`
     /// cells (8 neighbours for radius 1) and is stamped only on tiles the player probed.
     /// Collect chain (days with the collect-mines rule): a flagged mine can be defused, a defused mine or an exposed
-    /// dud can be collected. A probed mine is armed and can never be defused. Collected mines stay counted in the radar numbers.
+    /// dud can be collected. A probed mine is armed and can never be defused. A collected mine is out of the ground: the radar numbers of the probed cells around it go down by one.
     /// </summary>
     public class MineField : MonoBehaviour
     {
@@ -46,9 +46,10 @@ namespace MinefieldClerk.Field
         // At the start only the player's cell and its 8 neighbours are mine-free; everything else may hold mines.
         // Constants (not inspector fields) so old scene values cannot override this.
         private const float MaxDensity = 0.5f;
-        private const int RepairBudgetDivisor = 3;   // the fairness pass may remove at most MineCount / this mines
-        private const int MinRepairBudget = 3;
-        private const int safeRows = 0;
+        private const int GoodRepairDivisor = 6;     // a layout that needed at most MineCount / this fixes is good enough to stop searching
+        private const int MinGoodRepairs = 2;
+        private const int LayoutTries = 12;          // random layouts tried; the one needing the fewest fixes wins
+        private const int TopUpAttempts = 60;        // tries to put removed mines back without creating a guess
         private const int startSafeRadius = 1;
         [SerializeField] private int radius = 1;
         [Tooltip("-1 = new random layout every time")]
@@ -56,8 +57,8 @@ namespace MinefieldClerk.Field
         [Header("Fairness")]
         [Tooltip("After the first probe, remove just enough mines that the whole field can be cleared by deduction alone (no guessing)")]
         [SerializeField] private bool noGuessing = true;
-        [Tooltip("How many fix-up attempts the fairness pass may make")]
-        [SerializeField] private int maxRepairs = 200;
+        [Tooltip("How many fix-up attempts the fairness pass may make on one layout")]
+        [SerializeField] private int maxRepairs = 1000;
         [Header("Fuse")]
         [SerializeField] private float fuseMin = 1.5f;
         [SerializeField] private float fuseMax = 3f;
@@ -74,7 +75,6 @@ namespace MinefieldClerk.Field
         private readonly Dictionary<Vector3Int, Fuse> armed = new Dictionary<Vector3Int, Fuse>();
         private readonly List<Vector3Int> due = new List<Vector3Int>();
         private System.Random rng = new System.Random();
-        private bool firstProbeDone;
 
         private class Fuse
         {
@@ -94,8 +94,8 @@ namespace MinefieldClerk.Field
         public event Action<Vector3Int> MineDefused;
         /// <summary>A defused mine or a dud was collected. Arguments: cell, true when it was a dud.</summary>
         public event Action<Vector3Int, bool> MineCollected;
-        /// <summary>Mines were moved after generation (the safe first probe).</summary>
-        public event Action LayoutChanged;
+        /// <summary>The radar number of a probed cell changed because a mine near it was collected. Arguments: cell, new number.</summary>
+        public event Action<Vector3Int, int> NumberChanged;
 
         public int MineCount { get; private set; }
         public int ProbedCount => probed.Count;
@@ -112,10 +112,9 @@ namespace MinefieldClerk.Field
             Generate(Mathf.RoundToInt(density * field.Width * field.Height));
         }
 
-        /// <summary>Generates a field with exactly this many mines (fewer only if there is no room).</summary>
+        /// <summary>Generates a field aiming for this many mines. The fairness pass can leave a few fewer when the layout could not be solved without them.</summary>
         public void Generate(int mineCount)
         {
-            mines = new bool[field.Width, field.Height];
             probed.Clear();
             flags.Clear();
             exploded.Clear();
@@ -123,17 +122,26 @@ namespace MinefieldClerk.Field
             defused.Clear();
             collected.Clear();
             armed.Clear();
-            firstProbeDone = false;
-            MineCount = 0;
 
             rng = seed >= 0 ? new System.Random(seed) : new System.Random();
 
+            // The spawn zone is mine-free. With noGuessing the layout is also made solvable from the spawn cell
+            // right now, so probing anywhere later never reshuffles the field.
+            mines = noGuessing ? FairLayout(mineCount) : RandomLayout(mineCount);
+            MineCount = CountMines(mines);
+
+            Regenerated?.Invoke();
+        }
+
+        private bool[,] RandomLayout(int mineCount)
+        {
+            var layout = new bool[field.Width, field.Height];
             var candidates = new List<Vector2Int>();
             for (int x = 0; x < field.Width; x++)
             {
-                for (int y = safeRows; y < field.Height; y++)
+                for (int y = 0; y < field.Height; y++)
                 {
-                    if (!InStartZone(x, y)) candidates.Add(new Vector2Int(x, y));
+                    if (!InStartZone(x, y) && field.IsWalkable(new Vector3Int(x, y, 0))) candidates.Add(new Vector2Int(x, y));
                 }
             }
             for (int i = candidates.Count - 1; i > 0; i--)
@@ -142,14 +150,18 @@ namespace MinefieldClerk.Field
                 (candidates[i], candidates[j]) = (candidates[j], candidates[i]);
             }
             int count = Mathf.Min(mineCount, candidates.Count);
-            for (int i = 0; i < count; i++) mines[candidates[i].x, candidates[i].y] = true;
-            MineCount = count;
+            for (int i = 0; i < count; i++) layout[candidates[i].x, candidates[i].y] = true;
+            return layout;
+        }
 
-            // The spawn zone is mine-free and the layout is made solvable from the spawn cell right now,
-            // so probing anywhere later never reshuffles the field.
-            if (noGuessing) MakeSolvable(field.StartCell);
-
-            Regenerated?.Invoke();
+        private static int CountMines(bool[,] layout)
+        {
+            int count = 0;
+            foreach (bool mine in layout)
+            {
+                if (mine) count++;
+            }
+            return count;
         }
 
         private bool InStartZone(int x, int y)
@@ -200,7 +212,10 @@ namespace MinefieldClerk.Field
             else
             {
                 exploded.Add(cell);
+                mines[cell.x, cell.y] = false;   // the blast destroys the mine: it no longer counts for the numbers around it
+                MineCount--;
                 MineTriggered?.Invoke(cell);
+                RefreshNumbersAround(cell);
             }
         }
 
@@ -217,99 +232,146 @@ namespace MinefieldClerk.Field
             foreach (Vector3Int cell in new List<Vector3Int>(armed.Keys)) Resolve(cell, true);
         }
 
-        /// <summary>Clears the probed cell and its 8 neighbours of mines, moving them to other free cells.</summary>
-        private void MakeStartSafe(Vector3Int cell)
-        {
-            int removed = 0;
-            for (int dx = -1; dx <= 1; dx++)
-            {
-                for (int dy = -1; dy <= 1; dy++)
-                {
-                    int x = cell.x + dx;
-                    int y = cell.y + dy;
-                    if (x < 0 || y < 0 || x >= field.Width || y >= field.Height) continue;
-                    if (mines[x, y])
-                    {
-                        mines[x, y] = false;
-                        removed++;
-                    }
-                }
-            }
-            if (removed == 0) return;
-
-            var free = new List<Vector2Int>();
-            for (int x = 0; x < field.Width; x++)
-            {
-                for (int y = safeRows; y < field.Height; y++)
-                {
-                    if (mines[x, y]) continue;
-                    if (Mathf.Abs(x - cell.x) <= 1 && Mathf.Abs(y - cell.y) <= 1) continue;
-                    if (InStartZone(x, y)) continue;
-                    free.Add(new Vector2Int(x, y));
-                }
-            }
-
-            int placed = 0;
-            while (placed < removed && free.Count > 0)
-            {
-                int pick = rng.Next(free.Count);
-                mines[free[pick].x, free[pick].y] = true;
-                free[pick] = free[free.Count - 1];
-                free.RemoveAt(free.Count - 1);
-                placed++;
-            }
-            MineCount -= removed - placed;
-            LayoutChanged?.Invoke();
-        }
-
         /// <summary>
-        /// Plays the layout with the deduction solver from the first probe. While some safe cells cannot be proven,
-        /// removes a mine next to one of them and tries again. Mines are only ever removed, never added.
+        /// Builds a layout the deduction solver can clear from the spawn cell without a single guess, with no safe cell walled off by mines.
+        /// Tries several random layouts and repairs each one by removing mines next to cells that cannot be proven safe;
+        /// the layout that needed the fewest fixes wins. The removed mines are then put back wherever that keeps the field solvable.
         /// </summary>
-        private void MakeSolvable(Vector3Int start)
+        private bool[,] FairLayout(int mineCount)
         {
             var walkable = new bool[field.Width, field.Height];
             for (int x = 0; x < field.Width; x++)
                 for (int y = 0; y < field.Height; y++)
                     walkable[x, y] = field.IsWalkable(new Vector3Int(x, y, 0));
 
-            var unresolved = new List<Vector2Int>();
-            var candidates = new List<Vector2Int>();
+            Vector3Int start = field.StartCell;
             var origin = new Vector2Int(start.x, start.y);
-            int budget = Mathf.Max(MinRepairBudget, MineCount / RepairBudgetDivisor);
-            int removed = 0;
-            int left = 0;
+            bool[,] best = null;
+            int bestLeft = int.MaxValue, bestRemoved = int.MaxValue;
 
-            for (int attempt = 0; attempt < maxRepairs; attempt++)
+            for (int attempt = 0; attempt < LayoutTries; attempt++)
             {
-                left = MineSolver.Solve(mines, walkable, origin, radius, unresolved);
-                if (left == 0 || removed >= budget) break;
-
-                Vector2Int stuck = unresolved[rng.Next(unresolved.Count)];
-                candidates.Clear();
-                for (int reach = radius; reach <= radius + 1 && candidates.Count == 0; reach++)
+                bool[,] layout = RandomLayout(mineCount);
+                int removed = Repair(layout, walkable, origin, out int left);   // left = flaws still in the layout
+                if (left < bestLeft || (left == bestLeft && removed < bestRemoved))
                 {
-                    for (int dx = -reach; dx <= reach; dx++)
+                    best = layout;
+                    bestLeft = left;
+                    bestRemoved = removed;
+                }
+                if (left == 0 && removed <= Mathf.Max(MinGoodRepairs, mineCount / GoodRepairDivisor)) break;
+            }
+
+            int missing = Mathf.Min(mineCount, CountMines(best) + bestRemoved) - CountMines(best);
+            int added = bestLeft == 0 ? TopUp(best, walkable, origin, missing) : 0;
+            Debug.Log("[MineField] fairness pass: removed " + bestRemoved + " mine(s), put back " + added + ", " + bestLeft + " flaw(s) left (cells needing a guess or cut off), " + CountMines(best) + " mines left");
+            return best;
+        }
+
+        /// <summary>
+        /// Removes mines until the layout is fair: the solver clears it without a guess and no safe cell is cut off from the
+        /// spawn by a wall of mines. Mines next to an unprovable cell go first, then mines walling off a pocket.
+        /// Returns how many were removed; <paramref name="flaws"/> is what is still wrong (0 = fair).
+        /// </summary>
+        private int Repair(bool[,] layout, bool[,] walkable, Vector2Int origin, out int flaws)
+        {
+            var unresolved = new List<Vector2Int>();
+            var cut = new List<Vector2Int>();
+            var candidates = new List<Vector2Int>();
+            int removed = 0;
+            flaws = 0;
+
+            for (int attempt = 0; attempt <= maxRepairs; attempt++)
+            {
+                int unproven = MineSolver.Solve(layout, walkable, origin, radius, unresolved);
+                FindCutOff(layout, walkable, origin, cut);
+                flaws = unproven + cut.Count;
+                if (flaws == 0 || attempt == maxRepairs) break;
+
+                candidates.Clear();
+                if (unproven > 0)
+                {
+                    Vector2Int stuck = unresolved[rng.Next(unresolved.Count)];
+                    for (int reach = radius; reach <= radius + 1 && candidates.Count == 0; reach++)
                     {
-                        for (int dy = -reach; dy <= reach; dy++)
+                        for (int dx = -reach; dx <= reach; dx++)
                         {
-                            int x = stuck.x + dx, y = stuck.y + dy;
-                            if (x < 0 || y < 0 || x >= field.Width || y >= field.Height) continue;
-                            if (mines[x, y]) candidates.Add(new Vector2Int(x, y));
+                            for (int dy = -reach; dy <= reach; dy++)
+                            {
+                                AddIfMine(layout, stuck.x + dx, stuck.y + dy, candidates);
+                            }
                         }
                     }
+                }
+                else
+                {
+                    Vector2Int pocket = cut[rng.Next(cut.Count)];
+                    foreach (Vector2Int step in Orthogonal) AddIfMine(layout, pocket.x + step.x, pocket.y + step.y, candidates);
                 }
                 if (candidates.Count == 0) continue;
 
                 Vector2Int pick = candidates[rng.Next(candidates.Count)];
-                mines[pick.x, pick.y] = false;
-                MineCount--;
+                layout[pick.x, pick.y] = false;
                 removed++;
             }
+            return removed;
+        }
 
-            if (left != 0) left = MineSolver.Solve(mines, walkable, origin, radius, null);
-            if (removed > 0) LayoutChanged?.Invoke();
-            Debug.Log("[MineField] fairness pass: removed " + removed + " mine(s), " + left + " safe cell(s) still need a guess, " + MineCount + " mines left");
+        private static readonly Vector2Int[] Orthogonal = { Vector2Int.right, Vector2Int.left, Vector2Int.up, Vector2Int.down };
+
+        private void AddIfMine(bool[,] layout, int x, int y, List<Vector2Int> into)
+        {
+            if (x < 0 || y < 0 || x >= field.Width || y >= field.Height) return;
+            if (layout[x, y]) into.Add(new Vector2Int(x, y));
+        }
+
+        /// <summary>
+        /// Safe cells the deminer could not walk to from the spawn without crossing a mine (steps are orthogonal, so a diagonal
+        /// line of mines is a wall too). Fills <paramref name="cut"/> with them.
+        /// </summary>
+        private void FindCutOff(bool[,] layout, bool[,] walkable, Vector2Int origin, List<Vector2Int> cut)
+        {
+            int w = layout.GetLength(0), h = layout.GetLength(1);
+            var seen = new bool[w, h];
+            var queue = new Queue<Vector2Int>();
+            seen[origin.x, origin.y] = true;
+            queue.Enqueue(origin);
+            while (queue.Count > 0)
+            {
+                Vector2Int c = queue.Dequeue();
+                foreach (Vector2Int step in Orthogonal)
+                {
+                    int x = c.x + step.x, y = c.y + step.y;
+                    if (x < 0 || y < 0 || x >= w || y >= h || seen[x, y] || layout[x, y] || !walkable[x, y]) continue;
+                    seen[x, y] = true;
+                    queue.Enqueue(new Vector2Int(x, y));
+                }
+            }
+            cut.Clear();
+            for (int x = 0; x < w; x++)
+            {
+                for (int y = 0; y < h; y++)
+                {
+                    if (walkable[x, y] && !layout[x, y] && !seen[x, y]) cut.Add(new Vector2Int(x, y));
+                }
+            }
+        }
+
+        /// <summary>Adds up to <paramref name="missing"/> mines, each only where the layout stays fair. Returns how many were added.</summary>
+        private int TopUp(bool[,] layout, bool[,] walkable, Vector2Int origin, int missing)
+        {
+            var cut = new List<Vector2Int>();
+            int added = 0;
+            for (int attempt = 0; attempt < TopUpAttempts && added < missing; attempt++)
+            {
+                int x = rng.Next(field.Width), y = rng.Next(field.Height);
+                if (layout[x, y] || !walkable[x, y] || InStartZone(x, y)) continue;
+                layout[x, y] = true;
+                FindCutOff(layout, walkable, origin, cut);
+                if (cut.Count == 0 && MineSolver.Solve(layout, walkable, origin, radius, null) == 0) added++;
+                else layout[x, y] = false;
+            }
+            return added;
         }
 
         public int CountAround(Vector3Int cell)
@@ -331,12 +393,6 @@ namespace MinefieldClerk.Field
             cell = cell.Flat();
             if (!field.IsWalkable(cell)) return ProbeOutcome.Invalid;
             if (flags.Contains(cell) || IsResolved(cell)) return ProbeOutcome.Blocked;
-
-            if (!firstProbeDone)
-            {
-                // Only the spawn zone is guaranteed safe; probing elsewhere never changes the layout.
-                firstProbeDone = true;
-            }
 
             if (mines[cell.x, cell.y]) return Arm(cell);
 
@@ -422,9 +478,30 @@ namespace MinefieldClerk.Field
 
             bool wasDud = duds.Contains(cell);
             collected.Add(cell);
+            mines[cell.x, cell.y] = false;   // the mine is out of the ground
+            MineCount--;
             if (flags.Remove(cell)) FlagChanged?.Invoke(cell, false);
             MineCollected?.Invoke(cell, wasDud);
+            RefreshNumbersAround(cell);
             return true;
+        }
+
+        /// <summary>Recounts every probed cell within the radar radius of a cell where a mine was taken out.</summary>
+        private void RefreshNumbersAround(Vector3Int cell)
+        {
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                for (int dy = -radius; dy <= radius; dy++)
+                {
+                    if (dx == 0 && dy == 0) continue;
+                    var near = new Vector3Int(cell.x + dx, cell.y + dy, 0);
+                    if (!probed.TryGetValue(near, out int before)) continue;
+                    int now = CountAround(near);
+                    if (now == before) continue;
+                    probed[near] = now;
+                    NumberChanged?.Invoke(near, now);
+                }
+            }
         }
 
         /// <summary>Exposed duds that were not collected (they count as located but still lie in the ground).</summary>

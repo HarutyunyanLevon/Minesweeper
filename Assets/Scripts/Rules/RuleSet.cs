@@ -4,29 +4,31 @@ using UnityEngine;
 
 namespace MinefieldClerk.Rules
 {
-    /// <summary>One page of text as it appears on the briefing and in the rulebook (numbers already filled in). Id is empty for basic pages.</summary>
+    /// <summary>One page of text as it appears on the briefing and in the rulebook (numbers already filled in). Id is "basic" for the basic decrees.</summary>
     public readonly struct RuleEntry
     {
         public readonly string Id;
         public readonly string Title;
         public readonly string Text;
+        /// <summary>Name of the poster texture in Resources/Rulebook/Posters (empty = no poster).</summary>
+        public readonly string Poster;
 
-        public RuleEntry(string id, string title, string text)
+        public RuleEntry(string id, string title, string text, string poster = "")
         {
             Id = id;
             Title = title;
             Text = text;
+            Poster = poster ?? "";
         }
     }
 
     /// <summary>
     /// The rules in force on one day, with their numbers resolved for the current difficulty.
-    /// Built by DayManager when a field is generated; the same day always gives the same rules.
+    /// Built by DayManager when a field is generated from the day's list in Resources/Days/days.json.
     /// Rules never touch the mine layout itself, they change the actions, the pay and the fines.
     /// </summary>
     public class RuleSet
     {
-        private const int DaySeedStride = 7919;     // spreads consecutive day numbers over the random seeds
         private const int MinProbeCap = 1;
         private const string SecondsFormat = "0.#";
 
@@ -52,16 +54,27 @@ namespace MinefieldClerk.Rules
         public int CollectPay { get; private set; }
         public int UncollectedFine { get; private set; }
 
-        /// <summary>Picks the rules for a campaign day: a rule is in force when it is unlocked and its daily chance rolls true.</summary>
+        /// <summary>
+        /// The rules in force on a campaign day, in the order the day's list in days.json gives them
+        /// ("basic" stands for the basic decrees). Unknown ids are reported and skipped.
+        /// </summary>
         public static RuleSet ForDay(int day, DifficultySettings settings)
         {
             var set = new RuleSet();
-            var rng = new System.Random(day * DaySeedStride);
-            foreach (RuleDefinition rule in RuleTable.All)
+            foreach (string id in DaySchedule.RulesFor(day))
             {
-                // Always roll, so one rule's chance never changes what another rule gets.
-                bool rolled = rng.NextDouble() < rule.chance;
-                if (day >= rule.firstDay && rolled) set.Add(rule, settings);
+                if (id == RuleIds.Basic)
+                {
+                    BasicRules.AddPages(set.entries, settings);
+                    continue;
+                }
+                RuleDefinition rule = RuleTable.Find(id);
+                if (rule == null)
+                {
+                    Debug.LogError("[Rules] Day " + day + " lists rule '" + id + "' but there is no valid file for it in Resources/" + RuleTable.ResourceFolder + ". Skipped.");
+                    continue;
+                }
+                set.Add(rule, settings);
             }
             return set;
         }
@@ -93,7 +106,7 @@ namespace MinefieldClerk.Rules
                 default:
                     return;
             }
-            entries.Add(new RuleEntry(rule.id, rule.title, Describe(rule)));
+            entries.Add(new RuleEntry(rule.id, rule.title, Describe(rule), rule.poster));
         }
 
         private string Describe(RuleDefinition rule)

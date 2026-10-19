@@ -44,6 +44,9 @@ namespace MinefieldClerk.Player
         /// <summary>Isometric cell the player's feet are in.</summary>
         public Vector3Int CurrentCell { get; private set; }
 
+        /// <summary>The feet in cell units (see FieldBuilder.WorldToCellInterpolated): the centre of the body footprint.</summary>
+        public Vector2 CellPosition => field.WorldToCellInterpolated(new Vector3(feet.x, feet.y, 0f));
+
         /// <summary>True while the player is actually moving (drives the walk animation; the pixel-snapped transform flickers).</summary>
         public bool IsMoving { get; private set; }
 

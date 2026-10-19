@@ -10,6 +10,8 @@ namespace MinefieldClerk.Rules
     {
         public string title;
         public string text;
+        /// <summary>Poster shown beside the page (file name in Resources/Rulebook/Posters, no extension).</summary>
+        public string poster;
     }
 
     [Serializable]
@@ -55,7 +57,7 @@ namespace MinefieldClerk.Rules
             if (cache == null) cache = Load();
             foreach (BasicRulePage page in cache.pages)
             {
-                into.Add(new RuleEntry("", page.title, Fill(page.text, settings)));
+                into.Add(new RuleEntry(RuleIds.Basic, page.title, Fill(page.text, settings), page.poster));
             }
         }
 

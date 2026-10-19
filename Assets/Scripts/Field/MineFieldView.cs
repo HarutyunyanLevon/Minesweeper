@@ -79,6 +79,7 @@ namespace MinefieldClerk.Field
         private readonly Dictionary<Vector3Int, GameObject> dudMarkers = new Dictionary<Vector3Int, GameObject>();
         private readonly Dictionary<Vector3Int, GameObject> revealedMines = new Dictionary<Vector3Int, GameObject>();
         private readonly Dictionary<Vector3Int, GameObject> revealedNumbers = new Dictionary<Vector3Int, GameObject>();
+        private readonly Dictionary<Vector3Int, GameObject> radarDigits = new Dictionary<Vector3Int, GameObject>();   // the number stamped on each probed cell
 
         private bool gridVisible = true;
         private bool showMines;
@@ -107,7 +108,7 @@ namespace MinefieldClerk.Field
             mines.MineDud += OnMineDud;
             mines.MineDefused += OnMineDefused;
             mines.MineCollected += OnMineCollected;
-            mines.LayoutChanged += OnLayoutChanged;
+            mines.NumberChanged += OnNumberChanged;
         }
 
         private void OnDisable()
@@ -120,7 +121,7 @@ namespace MinefieldClerk.Field
             mines.MineDud -= OnMineDud;
             mines.MineDefused -= OnMineDefused;
             mines.MineCollected -= OnMineCollected;
-            mines.LayoutChanged -= OnLayoutChanged;
+            mines.NumberChanged -= OnNumberChanged;
         }
 
         public void ClearAll()
@@ -132,6 +133,7 @@ namespace MinefieldClerk.Field
             dudMarkers.Clear();
             revealedMines.Clear();
             revealedNumbers.Clear();
+            radarDigits.Clear();
             showMines = false;
             BuildGrid();
         }
@@ -143,11 +145,23 @@ namespace MinefieldClerk.Field
             Release(revealedNumbers, cell);
             Spawn("Probed", PickFor(dugVariants, cell), Center(cell), OrderProbed);
 
-            if (number > 0 && number < digits.Length)
-            {
-                SpriteRenderer digit = Spawn("Radar " + number, digits[number], Center(cell), OrderRadar);
-                digit.color = DigitColors[Mathf.Clamp(number, 0, DigitColors.Length - 1)];
-            }
+            StampDigit(cell, number);
+        }
+
+        /// <summary>Paints the radar number on a probed cell (nothing for 0), replacing the one that was there.</summary>
+        private void StampDigit(Vector3Int cell, int number)
+        {
+            Release(radarDigits, cell);
+            if (number <= 0 || number >= digits.Length) return;
+            SpriteRenderer digit = Spawn("Radar " + number, digits[number], Center(cell), OrderRadar);
+            digit.color = DigitColors[Mathf.Clamp(number, 0, DigitColors.Length - 1)];
+            radarDigits[cell.Flat()] = digit.gameObject;
+        }
+
+        /// <summary>A mine near a probed cell was collected: its number goes down.</summary>
+        private void OnNumberChanged(Vector3Int cell, int number)
+        {
+            StampDigit(cell, number);
         }
 
         private void OnFlagChanged(Vector3Int cell, bool placed)
@@ -216,6 +230,7 @@ namespace MinefieldClerk.Field
             Release(dudMarkers, cell);
             Release(revealedMines, cell);
             Spawn("Dug", PickFor(dugVariants, cell), Center(cell), OrderProbed);
+            if (ShowingAllNumbers) { ToggleAllNumbers(); ToggleAllNumbers(); }   // the dev hints follow the new counts
         }
 
         private void OnMineTriggered(Vector3Int cell)
@@ -277,13 +292,6 @@ namespace MinefieldClerk.Field
                     revealedNumbers[cell] = sr.gameObject;
                 }
             }
-        }
-
-        /// <summary>The safe first probe (or the fairness pass) moved mines: redraw the reveals that are on.</summary>
-        private void OnLayoutChanged()
-        {
-            if (showMines) { ToggleMines(); ToggleMines(); }
-            if (ShowingAllNumbers) { ToggleAllNumbers(); ToggleAllNumbers(); }
         }
 
         // ---------------------------------------------------------------- grid lines

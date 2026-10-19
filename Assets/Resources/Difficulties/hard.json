@@ -5,7 +5,7 @@
   ],
   "mines": 99,
 
-  "batterySeconds": 120,
+  "batterySeconds": 480,
   "payPerFlag": 10,
   "wrongFlagPenalty": 10,
   "quotaBonus": 25,
