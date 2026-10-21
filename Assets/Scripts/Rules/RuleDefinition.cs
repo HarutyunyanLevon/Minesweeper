@@ -81,6 +81,9 @@ namespace MinefieldClerk.Rules
             cache = null;
         }
 
+        /// <summary>Forgets the loaded rule files so they are read again (cheat tools).</summary>
+        public static void Reload() { cache = null; }
+
         public static IReadOnlyList<RuleDefinition> All
         {
             get

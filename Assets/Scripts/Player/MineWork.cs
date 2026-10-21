@@ -89,7 +89,7 @@ namespace MinefieldClerk.Player
 
             if (!Busy || cell != workCell || work != kind) Begin(cell, work, rules);
 
-            progress += Time.deltaTime;
+            progress += Time.deltaTime * DevTools.Cheats.CheatState.WorkSpeedFactor;
             repeatTimer += Time.deltaTime;
             if (repeatTimer >= ActionRepeatSeconds)
             {
@@ -154,7 +154,7 @@ namespace MinefieldClerk.Player
 
         private static bool ReadButton(out bool pressedThisFrame)
         {
-            Keyboard kb = Keyboard.current;
+            Keyboard kb = DevTools.Cheats.CheatSystem.Typing ? null : Keyboard.current;
             Gamepad pad = Gamepad.current;
             pressedThisFrame = (kb != null && kb.eKey.wasPressedThisFrame) || (pad != null && pad.buttonNorth.wasPressedThisFrame);
             return (kb != null && kb.eKey.isPressed) || (pad != null && pad.buttonNorth.isPressed);

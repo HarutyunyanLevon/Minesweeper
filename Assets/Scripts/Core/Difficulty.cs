@@ -96,6 +96,9 @@ namespace MinefieldClerk
             cache.Clear();
         }
 
+        /// <summary>Forgets the loaded difficulty files so they are read again (cheat tools).</summary>
+        public static void Reload() { cache.Clear(); }
+
         public static DifficultySettings Get(Difficulty difficulty)
         {
             if (cache.TryGetValue(difficulty, out DifficultySettings cached)) return cached;

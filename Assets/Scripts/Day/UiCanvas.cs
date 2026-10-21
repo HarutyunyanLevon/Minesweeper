@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -29,6 +30,13 @@ namespace MinefieldClerk.Day
             }
             if (windows == null) windows = Build("WindowsCanvas", WindowsOrder, WindowsReference);
             return windows.transform;
+        }
+
+        /// <summary>Every canvas created so far (HUD first), for the cheat windows.</summary>
+        public static IEnumerable<Canvas> Canvases()
+        {
+            if (hud != null) yield return hud;
+            if (windows != null) yield return windows;
         }
 
         private static Canvas Build(string name, int order, Vector2 reference)

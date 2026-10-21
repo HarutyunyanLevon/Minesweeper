@@ -106,6 +106,11 @@ namespace MinefieldClerk.Field
         public int ArmedCount => armed.Count;
         public bool HasArmed => armed.Count > 0;
 
+        /// <summary>Fuse length range in seconds and the dud chance. The cheat window changes them live; they apply to mines armed afterwards.</summary>
+        public float FuseMin { get => fuseMin; set => fuseMin = Mathf.Max(0f, value); }
+        public float FuseMax { get => fuseMax; set => fuseMax = Mathf.Max(0f, value); }
+        public float DudChance { get => dudChance; set => dudChance = Mathf.Clamp01(value); }
+
         /// <summary>Generates with the inspector density (about density x cells mines).</summary>
         public void Generate()
         {

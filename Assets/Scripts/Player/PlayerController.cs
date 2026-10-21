@@ -109,6 +109,16 @@ namespace MinefieldClerk.Player
             Apply();
         }
 
+        /// <summary>Cheat: puts the deminer on a cell (kept inside the field). Does nothing when the cell cannot be walked on.</summary>
+        public void TeleportTo(Vector3Int cell)
+        {
+            var target = new Vector3Int(Mathf.Clamp(cell.x, 0, field.Width - 1), Mathf.Clamp(cell.y, 0, field.Height - 1), 0);
+            if (!field.IsWalkable(target)) return;
+            feet = field.CellToWorld(target);
+            walkTarget = null;
+            Apply();
+        }
+
         private void Update()
         {
             UpdateMouse();
@@ -128,7 +138,7 @@ namespace MinefieldClerk.Player
 
                 if (input.sqrMagnitude > InputDeadZoneSqr)
                 {
-                    Vector2 delta = new Vector2(input.x, input.y * CellAspect) * (speed * SpeedMultiplier * Time.deltaTime);
+                    Vector2 delta = new Vector2(input.x, input.y * CellAspect) * (speed * SpeedMultiplier * DevTools.Cheats.CheatState.MoveSpeedFactor * Time.deltaTime);
                     Vector2 before = feet;
                     Move(delta);
                     IsMoving = (feet - before).sqrMagnitude > MovedSqr;
@@ -192,7 +202,7 @@ namespace MinefieldClerk.Player
         private Vector2 WalkInput()
         {
             Vector2 d = walkTarget.Value - feet;
-            float step = speed * SpeedMultiplier * Time.deltaTime;
+            float step = speed * SpeedMultiplier * DevTools.Cheats.CheatState.MoveSpeedFactor * Time.deltaTime;
             if (d.magnitude <= step)
             {
                 if (CanStand(walkTarget.Value)) feet = walkTarget.Value;
@@ -239,7 +249,7 @@ namespace MinefieldClerk.Player
             Vector2 v = Vector2.zero;
 
             Keyboard kb = Keyboard.current;
-            if (kb != null)
+            if (kb != null && !DevTools.Cheats.CheatSystem.Typing)
             {
                 if (kb.wKey.isPressed || kb.upArrowKey.isPressed) v.y += 1f;
                 if (kb.sKey.isPressed || kb.downArrowKey.isPressed) v.y -= 1f;

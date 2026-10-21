@@ -1,6 +1,7 @@
 using UnityEngine;
 using MinefieldClerk.Field;
 using MinefieldClerk.Player;
+using MinefieldClerk.DevTools.Cheats;
 
 namespace MinefieldClerk.DevTools
 {
@@ -37,6 +38,7 @@ namespace MinefieldClerk.DevTools
         /// <summary>True when a screen position (origin bottom-left) is over the HUD buttons.</summary>
         public static bool IsOverUi(Vector2 screen)
         {
+            if (CheatSystem.IsOverUi(screen)) return true;
             float y = Screen.height - screen.y;
             var point = new Vector2(screen.x, y);
             if (SwitchRect().Contains(point)) return true;
@@ -54,11 +56,11 @@ namespace MinefieldClerk.DevTools
             if (!DevMode.Enabled) return;
             if (view == null) view = FindAnyObjectByType<MineFieldView>();
             var kb = UnityEngine.InputSystem.Keyboard.current;
-            if (view != null && kb != null && kb.nKey.wasPressedThisFrame)
+            if (view != null && kb != null && !CheatSystem.Typing && kb.nKey.wasPressedThisFrame)
             {
                 view.ToggleAllNumbers();
             }
-            if (view != null && kb != null && kb.gKey.wasPressedThisFrame)
+            if (view != null && kb != null && !CheatSystem.Typing && kb.gKey.wasPressedThisFrame)
             {
                 view.ToggleGrid();
             }
@@ -82,7 +84,7 @@ namespace MinefieldClerk.DevTools
                 "State: " + state + "\n" +
                 "Probed " + mines.ProbedCount + "   Flags " + mines.FlagCount + "   Burning " + mines.ArmedCount + "   Exploded " + mines.ExplodedCount + "   Duds " + mines.DudCount + "   Collected " + mines.CollectedCount + "   (mines in field: " + mines.MineCount + ")\n" +
                 "Target cell " + t.x + ", " + t.y + "   Field " + (session != null ? session.Settings.name : UnknownField) + "\n" +
-                "WASD/LMB move   Space/RMB probe   F/MMB flag   hold E defuse/collect   B rulebook   R new field   F1 show mines   N show all numbers   G grid";
+                "WASD/LMB move   Space/RMB probe   F/MMB flag   hold E defuse/collect   B rulebook   R new field   F1 show mines   N show all numbers   G grid   F2-F7 cheat windows   F10 dev on/off";
 
             GUI.Label(new Rect(Margin, TextTop, TextWidth, TextHeight), text, style);
 

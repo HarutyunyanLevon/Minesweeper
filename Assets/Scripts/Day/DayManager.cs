@@ -6,6 +6,7 @@ using MinefieldClerk.Field;
 using MinefieldClerk.Player;
 using MinefieldClerk.Rules;
 using MinefieldClerk.Sound;
+using MinefieldClerk.DevTools.Cheats;
 
 namespace MinefieldClerk.Day
 {
@@ -44,6 +45,8 @@ namespace MinefieldClerk.Day
         private const string HudKeyHint = "Enter: end the day   B: rulebook";
         private const string HudKeyHintLocked = "B: rulebook";
         private const float BatteryLowShare = 0.2f;        // the low-battery warning sounds at this share of the battery left
+        private const string PreviewFooterFormat = "Cheat preview: the rules of day {0}      A / D: turn the page      Enter or B: close";
+        private const string ReportFirst = "Close the report first.";
         private const float StampDelaySeconds = 0.8f;      // the approval stamp lands this long after the report opens
 
         private RulebookWindow bookWin;
@@ -57,6 +60,8 @@ namespace MinefieldClerk.Day
         private int probesToday;
         private int kitsUsed;
         private bool showRulebook;
+        private Rulebook previewBook;   // cheat: another day's rules shown in the book window
+        private bool previewing;
 
         private FieldSession session;
         private MineField mines;
@@ -77,7 +82,7 @@ namespace MinefieldClerk.Day
         public int Money { get; private set; }
         public bool Playing => Phase == DayPhase.Playing;
         /// <summary>The shift is running and the rulebook is shut: the deminer may act.</summary>
-        public bool CanAct => Playing && !showRulebook;
+        public bool CanAct => Playing && !showRulebook && !previewing;
         /// <summary>The Book of Regulations is open over the field.</summary>
         public bool BookOpen => showRulebook;
         /// <summary>The family page (the evening expenses) is on screen.</summary>
@@ -85,12 +90,17 @@ namespace MinefieldClerk.Day
         /// <summary>The rules in force today.</summary>
         public RuleSet Rules => rules;
         /// <summary>Defuse kits still in the bag (0 on days without the collect-mines rule).</summary>
-        public int KitsLeft => rules.CollectMines ? Mathf.Max(0, rules.DefuseKits - kitsUsed) : 0;
+        public int KitsLeft => rules.CollectMines ? (CheatState.UnlimitedKitsActive ? rules.DefuseKits : Mathf.Max(0, rules.DefuseKits - kitsUsed)) : 0;
         public bool BatteryEmpty => battery <= 0f;
         /// <summary>Radar: detector battery length for the current difficulty.</summary>
         private float MaxBattery => session.Settings.batterySeconds * session.Settings.radarBattery;
         public float Battery01 => Mathf.Clamp01(battery / MaxBattery);
         public string DifficultyName => session.Settings.name;
+        public DifficultySettings Settings => session.Settings;
+        public int ProbesToday => probesToday;
+        /// <summary>Detector battery left, in seconds (cheat tools may set it).</summary>
+        public float BatterySeconds { get => battery; set => battery = Mathf.Clamp(value, 0f, MaxBattery); }
+        public float MaxBatterySeconds => MaxBattery;
 
         /// <summary>Flags needed today: the difficulty's base plus a little per day, never more than 80% of the mines.</summary>
         public int Quota
@@ -123,7 +133,7 @@ namespace MinefieldClerk.Day
         /// <summary>A defuse attempt was made: one kit is used up whatever the flag turned out to cover.</summary>
         public void SpendKit()
         {
-            kitsUsed++;
+            if (!CheatState.UnlimitedKitsActive) kitsUsed++;
         }
 
         /// <summary>A probe was made: costs battery and counts towards the probe limit.</summary>
@@ -166,7 +176,7 @@ namespace MinefieldClerk.Day
 
         private void UpdateHud()
         {
-            bool show = Phase == DayPhase.Playing && !showRulebook;
+            bool show = Phase == DayPhase.Playing && !showRulebook && !previewing;
             hudView.SetContentVisible(show);
             hudView.Apply(new HudState
             {
@@ -182,6 +192,7 @@ namespace MinefieldClerk.Day
         /// <summary>Shows or hides the book window to match the phase.</summary>
         private void SyncBook()
         {
+            if (previewing) return;   // a cheat preview owns the book window
                         int want = Phase == DayPhase.Briefing ? 1 : (Phase == DayPhase.Playing && showRulebook ? 2 : 0);
             if (want == bookShown) return;
             bookShown = want;
@@ -196,6 +207,11 @@ namespace MinefieldClerk.Day
 
         private void OnBookClosed()
         {
+            if (previewing)
+            {
+                ClosePreview();
+                return;
+            }
             if (Phase == DayPhase.Briefing) StartShift();
             else ToggleRulebook();
         }
@@ -217,6 +233,8 @@ namespace MinefieldClerk.Day
             probesToday = 0;
             kitsUsed = 0;
             showRulebook = false;
+            previewing = false;
+            previewBook = null;
             bookShown = 0;   // the window is shown again for the new briefing
             debriefWin.Hide();
             expensesWin.Hide();
@@ -232,8 +250,15 @@ namespace MinefieldClerk.Day
 
         private void Update()
         {
-            Keyboard kb = Keyboard.current;
+            Keyboard kb = CheatSystem.Typing ? null : Keyboard.current;   // a cheat text field has the keyboard
             bool enter = kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame);
+
+            if (previewing)
+            {
+                TurnPagesByKey(kb);
+                if (enter || (kb != null && kb.bKey.wasPressedThisFrame)) ClosePreview();
+                return;
+            }
 
             if (Phase == DayPhase.Briefing)
             {
@@ -254,7 +279,7 @@ namespace MinefieldClerk.Day
                     return;
                 }
                 if (DevTools.DevMode.Enabled && kb != null && kb.f9Key.wasPressedThisFrame) { EndDay(); return; }   // dev: skip the quota gate
-                if (!BatteryEmpty) battery = Mathf.Max(0f, battery - Time.deltaTime);
+                if (!BatteryEmpty && !CheatState.BatteryFrozenActive) battery = Mathf.Max(0f, battery - Time.deltaTime);
                 WarnLowBattery();
 
                 if (health.Dead)
@@ -291,9 +316,10 @@ namespace MinefieldClerk.Day
             if (kb.leftArrowKey.wasPressedThisFrame || kb.aKey.wasPressedThisFrame) step--;
             if (kb.rightArrowKey.wasPressedThisFrame || kb.dKey.wasPressedThisFrame) step++;
             if (step == 0) return;
-            int spread = rulebook.SpreadIndex;
-            rulebook.Turn(step);
-            if (rulebook.SpreadIndex != spread) Sfx.Play(SfxEvent.PageTurn);
+            Rulebook book = previewBook ?? rulebook;
+            int spread = book.SpreadIndex;
+            book.Turn(step);
+            if (book.SpreadIndex != spread) Sfx.Play(SfxEvent.PageTurn);
             bookWin.Refresh();
         }
 
@@ -425,6 +451,88 @@ namespace MinefieldClerk.Day
             debriefWin.Hide();
             if (expenseLines.Count > 0) expensesWin.Open(expenseLines, Money);
             else NextDay();
+        }
+
+        // ---------------------------------------------------------------- cheat API (DevTools/Cheats)
+
+        public void CheatSetMoney(int amount) { Money = Mathf.Max(0, amount); }
+        public void CheatSetProbes(int count) { probesToday = Mathf.Max(0, count); }
+        public void CheatSetKitsLeft(int left) { kitsUsed = Mathf.Max(0, rules.DefuseKits - left); }
+
+        /// <summary>Starts a campaign day now: a new field with that day's rules and its briefing. Money carries over.</summary>
+        public void CheatPlayDay(int target)
+        {
+            Day = Mathf.Max(1, target);
+            carryInjured = false;
+            UnpaidExpenses.Clear();
+            session.NewDay();   // OnRegenerated closes previews and report windows and resets the shift
+        }
+
+        public void CheatSkipBriefing()
+        {
+            if (Phase == DayPhase.Briefing) StartShift();
+        }
+
+        public void CheatShowReport()
+        {
+            ClosePreview();
+            if (Phase == DayPhase.Briefing) StartShift();
+            if (Phase == DayPhase.Playing) EndDay();
+        }
+
+        public void CheatShowExpenses()
+        {
+            CheatShowReport();
+            if (Phase == DayPhase.Debrief && debriefWin.Visible && expenseLines.Count > 0) OnReportDone();
+        }
+
+        /// <summary>Re-reads today's rules (after rule numbers, texts or the day's list changed) without touching the field.</summary>
+        public void CheatRebuildRules()
+        {
+            rules = RuleSet.ForDay(Day, session.Settings);
+            rulebook.Rebuild(Day, rules);
+            if (bookShown != 0 && !previewing) bookWin.Refresh();
+        }
+
+        /// <summary>Shows the Book of Regulations with another day's rules, without changing the day or the shift.</summary>
+        public void CheatPreviewRules(int target)
+        {
+            if (Phase == DayPhase.Debrief)
+            {
+                Notify(ReportFirst);
+                return;
+            }
+            int number = Mathf.Max(1, target);
+            var book = new Rulebook();
+            if (number > 1) book.Rebuild(number - 1, RuleSet.ForDay(number - 1, session.Settings));   // so the AMENDED stamps compare with the day before
+            book.Rebuild(number, RuleSet.ForDay(number, session.Settings));
+            previewBook = book;
+            previewing = true;
+            player.Frozen = true;
+            bookWin.Show(book, BookStamp, string.Format(PreviewFooterFormat, number));
+            Sfx.Play(SfxEvent.BookOpen);
+        }
+
+        private void ClosePreview()
+        {
+            if (!previewing) return;
+            previewing = false;
+            previewBook = null;
+            bookWin.Hide();
+            bookShown = 0;   // SyncBook puts the real book back if one belongs on screen
+            player.Frozen = health.Dead || Phase != DayPhase.Playing || showRulebook;
+        }
+
+        /// <summary>Flags (and under the collect rule defuses and collects) mines until today's quota is met.</summary>
+        public void CheatMeetQuota()
+        {
+            if (Phase != DayPhase.Playing) return;
+            foreach (Vector3Int cell in new List<Vector3Int>(mines.LiveMineCells()))
+            {
+                if (QuotaMet) break;
+                if (mines.WorkAt(cell) == CellWork.NeedsFlag) mines.ToggleFlag(cell);
+                if (rules.CollectMines && mines.Defuse(cell) == DefuseOutcome.Defused) mines.Collect(cell);
+            }
         }
 
         public void NextDay()

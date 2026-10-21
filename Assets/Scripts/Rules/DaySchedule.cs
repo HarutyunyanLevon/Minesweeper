@@ -31,16 +31,19 @@ namespace MinefieldClerk.Rules
         private static readonly string[] BasicOnly = { RuleIds.Basic };
 
         private static DayScheduleFile cache;
+        private static readonly Dictionary<int, string[]> overrides = new Dictionary<int, string[]>();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetCache()
         {
             cache = null;
+            overrides.Clear();
         }
 
         /// <summary>The rule ids for a campaign day, in page order.</summary>
         public static IReadOnlyList<string> RulesFor(int day)
         {
+            if (overrides.TryGetValue(day, out string[] forced)) return forced;
             if (cache == null) cache = Load();
             if (cache.days != null)
             {
@@ -51,6 +54,14 @@ namespace MinefieldClerk.Rules
             }
             return cache.defaultRules ?? BasicOnly;
         }
+
+        // ---- cheat tools: try other rule lists without editing days.json
+
+        /// <summary>Forgets the loaded days.json so it is read again.</summary>
+        public static void Reload() { cache = null; }
+        public static bool HasOverride(int day) { return overrides.ContainsKey(day); }
+        public static void SetOverride(int day, string[] rules) { overrides[day] = rules; }
+        public static void ClearOverride(int day) { overrides.Remove(day); }
 
         private static DayScheduleFile Load()
         {

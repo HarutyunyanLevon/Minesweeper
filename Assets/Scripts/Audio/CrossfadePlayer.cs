@@ -64,6 +64,34 @@ namespace MinefieldClerk.Sound
             active = null;
         }
 
+        /// <summary>Name the current track was started with, or null when nothing is current.</summary>
+        public string ActiveKey => active != null ? active.Key : null;
+
+        /// <summary>The audio source of the current track, or null (cheat tools read its position).</summary>
+        public AudioSource ActiveSource => active != null ? active.Source : null;
+
+        public bool IsPaused { get; private set; }
+
+        /// <summary>Freezes or resumes every voice, fades included.</summary>
+        public void SetPaused(bool paused)
+        {
+            if (paused == IsPaused) return;
+            IsPaused = paused;
+            foreach (Voice voice in voices)
+            {
+                if (paused) voice.Source.Pause();
+                else voice.Source.UnPause();
+            }
+        }
+
+        /// <summary>Plays the current track again from its start.</summary>
+        public void Restart()
+        {
+            if (active == null) return;
+            active.Source.time = 0f;
+            if (!active.Source.isPlaying && !IsPaused) active.Source.Play();
+        }
+
         public void Tick(float deltaSeconds, float fadeSeconds, float master)
         {
             float step = fadeSeconds > 0f ? deltaSeconds / fadeSeconds : 1f;

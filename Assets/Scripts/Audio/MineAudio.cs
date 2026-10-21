@@ -156,6 +156,14 @@ namespace MinefieldClerk.Field
             }
         }
 
+        /// <summary>Cheat tools: silences every fuse sound at once.</summary>
+        public void StopAllSounds()
+        {
+            StopAllBeeps();
+            sfx.Stop();
+            beepSource.Stop();
+        }
+
         private void StopAllBeeps()
         {
             StopAllCoroutines();

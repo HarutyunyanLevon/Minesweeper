@@ -53,7 +53,7 @@ namespace MinefieldClerk.Field
             Keyboard kb = Keyboard.current;
             if (kb == null) return;
 
-            if (!DevTools.DevMode.Enabled) return;
+            if (!DevTools.DevMode.Enabled || DevTools.Cheats.CheatSystem.Typing) return;
             if (kb.rKey.wasPressedThisFrame) NewDay();
             if (kb.f1Key.wasPressedThisFrame) view.ToggleMines();
         }

@@ -87,6 +87,8 @@ namespace MinefieldClerk.Field
         private Sprite gridUpper, gridLowerLeft, gridLowerRight;
 
         public bool ShowingAllNumbers => revealedNumbers.Count > 0;
+        public bool ShowingMines => showMines;
+        public bool ShowingGrid => gridVisible;
 
         public void Configure(Sprite[] digitSprites, Sprite flag, Sprite crater, Sprite[] blast, Sprite[] dug, Sprite[] mineArt)
         {

@@ -149,7 +149,7 @@ namespace MinefieldClerk.Player
             DayManager day = DayManager.Instance;
             if (health.Dead || (day != null && !day.CanAct) || work.Busy) return;
 
-            Keyboard kb = Keyboard.current;
+            Keyboard kb = DevTools.Cheats.CheatSystem.Typing ? null : Keyboard.current;
             Gamepad pad = Gamepad.current;
 
             bool probe = (kb != null && kb.spaceKey.wasPressedThisFrame) || (pad != null && pad.buttonSouth.wasPressedThisFrame);

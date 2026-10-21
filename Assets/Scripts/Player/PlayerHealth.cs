@@ -22,9 +22,18 @@ namespace MinefieldClerk.Player
 
         public bool Injured => hits == InjuredHits;
         public bool Dead => hits >= DeadHits;
+        public int Hits => hits;
+
+        /// <summary>Cheat: sets the hits taken (0 healthy, 1 injured, 2 dead) and updates the look.</summary>
+        public void CheatSetHits(int count)
+        {
+            hits = Mathf.Clamp(count, 0, DeadHits);
+            Apply();
+        }
 
         public void Hit()
         {
+            if (DevTools.Cheats.CheatState.GodActive) return;
             hits++;
             Apply();
         }

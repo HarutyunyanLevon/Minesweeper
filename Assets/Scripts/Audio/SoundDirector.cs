@@ -79,15 +79,49 @@ namespace MinefieldClerk.Sound
         public bool PlayEvent(string eventName, float volumeScale)
         {
             if (!TryPick(eventName, out AudioClip clip, out float volume, out float jitter)) return false;
+            PlayOnVoice(clip, volume * volumeScale, jitter);
+            return true;
+        }
 
+        /// <summary>Plays one chosen recording of an event (cheat tools). False when the event or that variant does not exist.</summary>
+        public bool PlayVariant(string eventName, int index, float volumeScale)
+        {
+            SoundEvent sound = Library != null ? Library.Find(eventName) : null;
+            if (sound == null || sound.clips == null || index < 0 || index >= sound.clips.Length || sound.clips[index] == null) return false;
+            PlayOnVoice(sound.clips[index], sound.volume * Library.sfxMaster * volumeScale, sound.pitchJitter);
+            return true;
+        }
+
+        /// <summary>Cuts every sound effect that is playing or waiting for its delay.</summary>
+        public void StopAllVoices()
+        {
+            StopAllCoroutines();
+            foreach (AudioSource voice in voices) voice.Stop();
+        }
+
+        /// <summary>How many effect voices are sounding right now.</summary>
+        public int PlayingVoices
+        {
+            get
+            {
+                int count = 0;
+                foreach (AudioSource voice in voices)
+                {
+                    if (voice.isPlaying) count++;
+                }
+                return count;
+            }
+        }
+
+        private void PlayOnVoice(AudioClip clip, float volume, float jitter)
+        {
             AudioSource voice = voices[nextVoice];
             nextVoice = (nextVoice + 1) % voices.Length;
             voice.Stop();
             voice.clip = clip;
-            voice.volume = Mathf.Clamp01(volume * volumeScale);
+            voice.volume = Mathf.Clamp01(volume);
             voice.pitch = 1f + Random.Range(-jitter, jitter);
             voice.Play();
-            return true;
         }
 
         public bool HasEvent(string eventName)

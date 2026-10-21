@@ -42,6 +42,9 @@ namespace MinefieldClerk.Rules
             cache = null;
         }
 
+        /// <summary>Forgets the loaded rulebook pages so they are read again (cheat tools).</summary>
+        public static void Reload() { cache = null; }
+
         /// <summary>The family name the Ministry uses for the deminer.</summary>
         public static string Surname
         {
