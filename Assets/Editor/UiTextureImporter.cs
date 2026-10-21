@@ -5,7 +5,7 @@ using UnityEngine;
 namespace MinefieldClerk.EditorTools
 {
     /// <summary>
-    /// Textures under Assets/Resources/UI and Assets/Resources/Rulebook are drawn by IMGUI, not as sprites:
+    /// Textures under Assets/Resources/UI and Assets/Resources/Rulebook are UI art:
     /// point filter, no mipmaps, uncompressed, clamped.
     /// </summary>
     public class UiTextureImporter : AssetPostprocessor

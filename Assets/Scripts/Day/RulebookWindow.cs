@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.UI;
 using MinefieldClerk.Rules;
+using MinefieldClerk.Sound;
 
 namespace MinefieldClerk.Day
 {
@@ -29,7 +30,7 @@ namespace MinefieldClerk.Day
         {
             prev.onClick.AddListener(() => Turn(-1));
             next.onClick.AddListener(() => Turn(1));
-            close.onClick.AddListener(() => { UiCanvas.ClearSelection(); Closed?.Invoke(); });
+            close.onClick.AddListener(() => { UiCanvas.ClearSelection(); Sfx.Play(SfxEvent.UiClick); Closed?.Invoke(); });
         }
 
         public void Show(Rulebook rulebook, string stamp, string footerText)
@@ -47,7 +48,9 @@ namespace MinefieldClerk.Day
         private void Turn(int step)
         {
             UiCanvas.ClearSelection();
+            int spread = book.SpreadIndex;
             book.Turn(step);
+            if (book.SpreadIndex != spread) Sfx.Play(SfxEvent.PageTurn);
             Refresh();
         }
 

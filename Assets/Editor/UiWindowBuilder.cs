@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
@@ -7,14 +8,14 @@ using MinefieldClerk.Day;
 namespace MinefieldClerk.EditorTools
 {
     /// <summary>
-    /// Creates the UI window prefabs (briefing book, debrief) in Assets/Resources/UI/Windows. Run it once, then edit the prefabs by hand
+    /// Creates every UI prefab: windows (briefing book, debrief report, expenses) in Assets/Resources/UI/Windows, HUD and work bar in Assets/Resources/UI/Hud. Run it once, then edit the prefabs by hand
     /// (open them in Prefab Mode). Running it again rebuilds them from scratch and overwrites your edits.
     /// Menu: Minefield/UI/Build Windows
     /// </summary>
     public static class UiWindowBuilder
     {
-        private const string Folder = "Assets/Resources/UI/Windows";
-        private const string DebriefPrefab = "DebriefWindow", RulebookPrefab = "RulebookWindow";
+        private const string WindowsFolder = "Assets/Resources/UI/Windows", HudFolder = "Assets/Resources/UI/Hud";
+        private const string DebriefPrefab = "DebriefWindow", ExpensesPrefab = "ExpensesWindow", RulebookPrefab = "RulebookWindow", HudPrefab = "HudWindow", WorkBarPrefab = "WorkBar";
 
         // ---- Shared look
         private static readonly Color Ink = new Color(0.32f, 0.18f, 0.09f), ReportInk = new Color(0.30f, 0.07f, 0.05f);
@@ -23,6 +24,19 @@ namespace MinefieldClerk.EditorTools
         private static readonly Color DarkRed = new Color(0.50f, 0.06f, 0.05f), StampRed = new Color(0.72f, 0.10f, 0.08f);
         private static readonly Color Cream = new Color(0.93f, 0.87f, 0.70f), Gold = new Color(0.95f, 0.76f, 0.22f);
         private const float Half = 0.5f;
+        // ---- HUD (designed for the 1920 x 1080 HUD canvas)
+        private const float HudMargin = 18f, GapY = 6f, PlateW = 250f, PlateAspect = 368f / 86f, PlateBorderScale = 0.68f;
+        private const float PlateIconH = 30f, PlateIconX = 40f, PlateTextX = 82f, PlateTextRight = 26f;
+        private const float BarH = 40f, BarFrameArtH = 46f, BarFrameLeft = 16f, BarFrameRight = 21f, BarFrameTop = 12f, BarIconW = 32f, BarIconH = 38f;
+        private const float HintH = 22f, SlotH = 66f, SlotGap = 40f, SlotBottom = 52f, CaptionH = 20f, CaptionGap = 2f;
+        private const float CounterLeft = 0.70f, CounterTop = 0.66f, CounterRight = 0.96f, CounterBottom = 0.94f;   // the dark square on a slot
+        private const int FontPlate = 19, FontHint = 15, FontCaption = 14, FontCounter = 14, FontBar = 15, ToastFont = 26;
+        private const float ToastW = 960f, ToastH = 44f, ToastBottom = 40f;
+        private static readonly Color Light = new Color(1f, 0.94f, 0.78f), Warn = new Color(0.95f, 0.35f, 0.25f), BarFull = new Color(0.45f, 0.78f, 0.2f);
+        // ---- Work bar
+        private const float WorkW = 140f, WorkH = 14f, WorkInset = 2f, WorkLabelH = 24f, WorkLabelGap = 4f;
+        private const int WorkFont = 18;
+        private static readonly Color WorkBack = new Color(0f, 0f, 0f, 0.7f), WorkFill = new Color(0.95f, 0.8f, 0.3f);
         private const float DebriefW = 1024f, DebriefH = 576f, BookW = 1024f, BookH = 660f;
 
         // ---- Debrief: report page (canvas pixels)
@@ -54,40 +68,33 @@ namespace MinefieldClerk.EditorTools
         private const string BareNote = "New directives are posted each morning. Read them before you take the field.";
         private const string SampleBody = "The text of the directive appears here and shrinks to fit the page.";
 
-        [MenuItem("Minefield/UI/Build Windows (overwrites prefabs)")]
+        [MenuItem("Minefield/UI/Build Prefabs (overwrites edits)")]
         public static void BuildAll()
         {
-            Directory.CreateDirectory(Folder);
+            Directory.CreateDirectory(WindowsFolder);
+            Directory.CreateDirectory(HudFolder);
             BuildDebrief();
+            BuildExpenses();
             BuildRulebook();
+            BuildHud();
+            BuildWorkBar();
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("[UI] Windows built in " + Folder);
+            Debug.Log("[UI] Prefabs built in " + WindowsFolder + " and " + HudFolder);
         }
 
-        [MenuItem("Minefield/UI/Delete Obsolete IMGUI Scripts")]
-        public static void DeleteObsolete()
-        {
-            string[] files = { "Assets/Scripts/Day/RulePaper.cs", "Assets/Scripts/Day/DebriefScreen.cs", "Assets/Scripts/Day/DebriefLayout.cs",
-                               "Assets/Resources/Debrief/layout.json", "Assets/Resources/Debrief/notepad.png", "Assets/Resources/Rulebook/poster_holder.png" };
-            foreach (string f in files) if (AssetDatabase.DeleteAsset(f)) Debug.Log("[UI] Deleted " + f);
-        }
-
-        // ================= Debrief =================
+        // ================= Debrief report =================
 
         private static void BuildDebrief()
         {
             GameObject root = Node("DebriefWindow", null);
             Stretch(Rt(root));
-            Image dim = Pic(Box("Dim", root.transform, 0, 0, 0, 0), null, DimColor);
-            Stretch(dim.rectTransform);
+            Pic(Fill("Dim", root.transform), null, DimColor);
             RectTransform frame = Center("Frame", root.transform, DebriefW, DebriefH);
 
-            // ---- Page 1: state report
-            RectTransform report = Box("ReportPage", frame, 0, 0, DebriefW, DebriefH);
-            Pic(Box("Background", report, 0, 0, DebriefW, DebriefH), Spr("Debrief/report_form", FilterMode.Point), Color.white);
-            Text title = Label(Box("Title", report, 0, TitleY, DebriefW, TitleH), "STATE REPORT - DAY 1", TitleSize, ReportInk, TextAnchor.MiddleCenter);
-            RectTransform rows = Box("Rows", report, RowsX, FirstLine - RowPitch, RowsW, RowPitch * RowCount);
+            Pic(Box("Background", frame, 0, 0, DebriefW, DebriefH), Spr("Debrief/report_form", FilterMode.Point), Color.white);
+            Text title = Label(Box("Title", frame, 0, TitleY, DebriefW, TitleH), "STATE REPORT - DAY 1", TitleSize, ReportInk, TextAnchor.MiddleCenter);
+            RectTransform rows = Box("Rows", frame, RowsX, FirstLine - RowPitch, RowsW, RowPitch * RowCount);
             var group = rows.gameObject.AddComponent<VerticalLayoutGroup>();
             group.childAlignment = TextAnchor.UpperLeft;
             group.childControlWidth = group.childControlHeight = true;
@@ -100,16 +107,29 @@ namespace MinefieldClerk.EditorTools
             Text rowValue = Label(Fill("Value", rowT), "+400", RowSize, ReportInk, TextAnchor.LowerRight);
             Set(rowView, "label", rowLabel); Set(rowView, "value", rowValue);
             Text nextLabel;
-            Button reportNext = MakeButton("NextButton", report, NextX, NextY, NextW, NextH, null, new Color(0, 0, 0, 0), "Next (Enter)", SmallSize, ReportInk, out nextLabel);
+            Button next = MakeButton("NextButton", frame, NextX, NextY, NextW, NextH, null, new Color(0, 0, 0, 0), "Next (Enter)", SmallSize, ReportInk, out nextLabel);
 
-            // ---- Page 2: family
-            RectTransform family = Box("FamilyPage", frame, 0, 0, DebriefW, DebriefH);
+            var win = root.AddComponent<DebriefWindow>();
+            Set(win, "titleText", title); Set(win, "rowsRoot", rows); Set(win, "rowTemplate", rowView);
+            Set(win, "next", next); Set(win, "nextLabel", nextLabel);
+            Save(root, WindowsFolder, DebriefPrefab);
+        }
+
+        // ================= Expenses (family page) =================
+
+        private static void BuildExpenses()
+        {
+            GameObject root = Node("ExpensesWindow", null);
+            Stretch(Rt(root));
+            Pic(Fill("Dim", root.transform), null, DimColor);
+            RectTransform family = Center("Frame", root.transform, DebriefW, DebriefH);
+
             Pic(Box("Background", family, 0, 0, DebriefW, DebriefH), Spr("Debrief/family_table", FilterMode.Point), Color.white);
             float lh = LocketW * LocketAspect;
             Pic(Box("Locket", family, LocketX, LocketY, LocketW, lh), Spr("Debrief/locket_open", FilterMode.Point), Color.white);
             RectTransform note = Box("Note", family, LocketX + LocketW * NoteLeft, LocketY + lh * NoteTop, LocketW * NoteW, lh * NoteH);
             note.localRotation = Quaternion.Euler(0f, 0f, NoteTilt);
-            Text noteText = Label(note, "Come\nhome", NoteSize, new Color(0.17f, 0.23f, 0.40f), TextAnchor.MiddleCenter);
+            Label(note, "Come\nhome", NoteSize, new Color(0.17f, 0.23f, 0.40f), TextAnchor.MiddleCenter);
             note.gameObject.AddComponent<OsFont>();
             var shadow = note.gameObject.AddComponent<Shadow>();
             shadow.effectColor = new Color(0f, 0f, 0f, 0.25f);
@@ -121,7 +141,7 @@ namespace MinefieldClerk.EditorTools
             Text inHand = Label(Box("InHand", family, PadX, PadY + InHandY, PadW, InHandH), "In hand: 0", InHandSize, Ink, TextAnchor.MiddleCenter);
             inHand.gameObject.AddComponent<OsFont>();
 
-            RectTransform list = Box("Expenses", family, PadX + ListX, PadY + ListY, PadW - ListX - ListX * Half, LineH * ListRows);
+            RectTransform list = Box("Expenses", family, PadX + ListX, PadY + ListY, PadW - ListX * 2f, LineH * ListRows);
             var vg = list.gameObject.AddComponent<VerticalLayoutGroup>();
             vg.childAlignment = TextAnchor.UpperLeft;
             vg.childControlWidth = vg.childControlHeight = true;
@@ -135,34 +155,171 @@ namespace MinefieldClerk.EditorTools
             price.gameObject.AddComponent<OsFont>();
             RectTransform boxRt = Box("Checkbox", exT, PriceW, LineH - BoxSize - BoxInset, BoxSize, BoxSize);
             Image boxBg = Pic(boxRt, null, Ink);
-            Image inner = Pic(Fill("Inner", boxRt, BoxInset), null, Paper);
+            Pic(Fill("Inner", boxRt, BoxInset), null, Paper);
             Image check = Pic(Fill("Check", boxRt, CheckInset), null, Tick);
             var toggle = boxRt.gameObject.AddComponent<Toggle>();
             toggle.transition = Selectable.Transition.None;
             toggle.targetGraphic = boxBg;
             toggle.graphic = check;
             toggle.isOn = true;
-            Navigation none = new Navigation { mode = Navigation.Mode.None };
-            toggle.navigation = none;
+            toggle.navigation = new Navigation { mode = Navigation.Mode.None };
             Text exLabel = Label(Box("Label", exT, LabelX, 0, rowW - LabelX, LineH), "Pay the bills", ExpenseSize, Ink, TextAnchor.LowerLeft);
             exLabel.gameObject.AddComponent<OsFont>();
             Set(exView, "price", price); Set(exView, "label", exLabel); Set(exView, "box", toggle);
 
             Text famLabel;
             Button famNext = MakeButton("NextDayButton", family, PadX + (PadW - FamilyNextW) * Half, PadY + FamilyNextY, FamilyNextW, FamilyNextH, null, Ink, "Next day (Enter)", SmallSize + 2, Ink, out famLabel);
-            // a paper inlay so the button reads as an outlined stamp
-            Image inlay = Pic(Fill("Inlay", famNext.transform, ButtonBorder), null, Paper);
+            Image inlay = Pic(Fill("Inlay", famNext.transform, ButtonBorder), null, Paper);   // a paper inlay so the button reads as an outlined stamp
             inlay.transform.SetSiblingIndex(0);
-            inlay.raycastTarget = false;
             famLabel.transform.SetAsLastSibling();
 
-            var win = root.AddComponent<DebriefWindow>();
-            Set(win, "reportPage", report.gameObject); Set(win, "titleText", title); Set(win, "rowsRoot", rows); Set(win, "rowTemplate", rowView);
-            Set(win, "reportNext", reportNext); Set(win, "reportNextLabel", nextLabel);
-            Set(win, "familyPage", family.gameObject); Set(win, "inHandText", inHand); Set(win, "expenseRoot", list); Set(win, "expenseTemplate", exView);
-            Set(win, "familyNext", famNext);
-            family.gameObject.SetActive(false);   // pages overlap in the prefab: switch it on in the Inspector to edit it
-            Save(root, DebriefPrefab);
+            var win = root.AddComponent<ExpensesWindow>();
+            Set(win, "inHandText", inHand); Set(win, "expenseRoot", list); Set(win, "expenseTemplate", exView); Set(win, "next", famNext);
+            Save(root, WindowsFolder, ExpensesPrefab);
+        }
+
+        // ================= HUD =================
+
+        private static void BuildHud()
+        {
+            GameObject root = Node("HudWindow", null);
+            Stretch(Rt(root));
+            Image dusk = Pic(Fill("Dusk", root.transform), null, new Color(0.12f, 0.05f, 0.2f, 0f));
+            RectTransform content = Fill("Content", root.transform);
+
+            // top-right column: plates, battery, hints
+            RectTransform col = Node("Column", content).GetComponent<RectTransform>();
+            col.anchorMin = col.anchorMax = col.pivot = Vector2.one;
+            col.anchoredPosition = new Vector2(-HudMargin, -HudMargin);
+            col.sizeDelta = new Vector2(PlateW, 0f);
+            var vg = col.gameObject.AddComponent<VerticalLayoutGroup>();
+            vg.spacing = GapY;
+            vg.childControlWidth = vg.childControlHeight = true;
+            vg.childForceExpandWidth = true;
+            vg.childForceExpandHeight = false;
+            col.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            float plateH = PlateW / PlateAspect;
+            Text day = Plate("DayPlate", col, "icon_coins", "Day 1 (Medium)", plateH);   // the kit extraction swapped these two names:
+            Text money = Plate("MoneyPlate", col, "icon_calendar", "Money 0", plateH);   // the file icon_coins holds the calendar art
+            Text quota = Plate("QuotaPlate", col, "icon_star", "Flags 0 / 12", plateH);
+
+            RectTransform battery = LayoutBox("Battery", col, BarH);
+            Sprite bolt = Spr("UI/icon_lightning", FilterMode.Point);
+            float boltH = BarIconH;
+            Pic(Box("Icon", battery, 0, (BarH - boltH) * Half, boltH * Aspect(bolt), boltH), bolt, Color.white);
+            float art = BarH / BarFrameArtH;
+            RectTransform frame = Box("Frame", battery, BarIconW, 0, PlateW - BarIconW, BarH);
+            Sliced(Pic(frame, Spr("UI/bar_battery_frame", FilterMode.Point), Color.white), art);
+            RectTransform area = Fill("FillArea", frame);
+            area.offsetMin = new Vector2(BarFrameLeft * art, BarFrameTop * art);
+            area.offsetMax = new Vector2(-BarFrameRight * art, -BarFrameTop * art);
+            RectTransform fill = Fill("Fill", area);
+            Sliced(Pic(fill, Spr("UI/bar_fill_solid", FilterMode.Point), BarFull), art);
+            Text dead = Label(Fill("DeadText", frame), "DETECTOR DEAD", FontBar, Warn, TextAnchor.MiddleCenter);
+            Outline(dead);
+
+            Text keyHint = Hint("KeyHint", col);
+            Text workHint = Hint("WorkHint", col);
+
+            // bottom centre: hotbar
+            RectTransform hotbar = Node("Hotbar", content).GetComponent<RectTransform>();
+            hotbar.anchorMin = hotbar.anchorMax = new Vector2(Half, 0f);
+            hotbar.pivot = new Vector2(Half, 0f);
+            hotbar.anchoredPosition = new Vector2(0f, SlotBottom);
+            var hg = hotbar.gameObject.AddComponent<HorizontalLayoutGroup>();
+            hg.spacing = SlotGap;
+            hg.childAlignment = TextAnchor.LowerCenter;
+            hg.childControlWidth = hg.childControlHeight = true;
+            hg.childForceExpandWidth = hg.childForceExpandHeight = false;
+            var fitter = hotbar.gameObject.AddComponent<ContentSizeFitter>();
+            fitter.horizontalFit = fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            HotbarSlot flag = Slot("FlagSlot", hotbar, "slot_flag", "Flags");
+            HotbarSlot detector = Slot("DetectorSlot", hotbar, "slot_detector", "Detector");
+            HotbarSlot kit = Slot("KitSlot", hotbar, "slot_defuse_kit", "Kits");
+
+            // toast line (also over the windows' dim, below the windows)
+            RectTransform toastRt = Box("Toast", root.transform, 0, 0, ToastW, ToastH);
+            toastRt.anchorMin = toastRt.anchorMax = new Vector2(Half, 0f);
+            toastRt.pivot = new Vector2(Half, 0f);
+            toastRt.anchoredPosition = new Vector2(0f, ToastBottom);
+            Text toast = Label(toastRt, "Toast message", ToastFont, Light, TextAnchor.MiddleCenter);
+            Outline(toast);
+
+            var view = root.AddComponent<HudView>();
+            Set(view, "dusk", dusk); Set(view, "content", content.gameObject);
+            Set(view, "dayText", day); Set(view, "moneyText", money); Set(view, "quotaText", quota);
+            Set(view, "fill", fill); Set(view, "deadText", dead);
+            Set(view, "keyHint", keyHint); Set(view, "workHint", workHint);
+            Set(view, "flagSlot", flag); Set(view, "detectorSlot", detector); Set(view, "kitSlot", kit);
+            Set(view, "toast", toast);
+            Save(root, HudFolder, HudPrefab);
+        }
+
+        private static Text Plate(string name, Transform parent, string icon, string text, float h)
+        {
+            RectTransform plate = LayoutBox(name, parent, h);
+            Sliced(Pic(plate, Spr("UI/panel_mid", FilterMode.Point), Color.white), PlateBorderScale);
+            Sprite sprite = Spr("UI/" + icon, FilterMode.Point);
+            float iw = PlateIconH * Aspect(sprite);
+            Pic(Box("Icon", plate, PlateIconX - iw * Half, (h - PlateIconH) * Half, iw, PlateIconH), sprite, Color.white);
+            return Label(Box("Text", plate, PlateTextX, 0, PlateW - PlateTextX - PlateTextRight, h), text, FontPlate, Ink, TextAnchor.MiddleLeft);
+        }
+
+        private static Text Hint(string name, Transform parent)
+        {
+            RectTransform rt = LayoutBox(name, parent, HintH);
+            Text t = Label(rt, "Hint", FontHint, Light, TextAnchor.MiddleRight);
+            Outline(t);
+            return t;
+        }
+
+        private static HotbarSlot Slot(string name, Transform parent, string sprite, string caption)
+        {
+            Sprite sp = Spr("UI/" + sprite, FilterMode.Point);
+            RectTransform rt = Rt(Node(name, parent));
+            var le = rt.gameObject.AddComponent<LayoutElement>();
+            le.preferredHeight = SlotH;
+            le.preferredWidth = SlotH * Aspect(sp);
+            Pic(Fill("Art", rt), sp, Color.white);
+            RectTransform counter = Fill("Counter", rt);
+            Frac(counter, CounterLeft, CounterTop, CounterRight, CounterBottom);
+            Text count = Label(counter, "0", FontCounter, Color.white, TextAnchor.MiddleCenter);
+            Outline(count);
+            RectTransform cap = Rt(Node("Caption", rt));
+            cap.anchorMin = cap.anchorMax = new Vector2(Half, 0f);
+            cap.pivot = new Vector2(Half, 1f);
+            cap.anchoredPosition = new Vector2(0f, -CaptionGap);
+            cap.sizeDelta = new Vector2(SlotH * Aspect(sp) * 2f, CaptionH);
+            Text label = Label(cap, caption, FontCaption, Color.white, TextAnchor.UpperCenter);
+            Outline(label);
+            var slot = rt.gameObject.AddComponent<HotbarSlot>();
+            Set(slot, "count", count); Set(slot, "caption", label);
+            return slot;
+        }
+
+        // ================= Work bar =================
+
+        private static void BuildWorkBar()
+        {
+            GameObject root = Node("WorkBar", null);
+            RectTransform rt = Rt(root);
+            rt.anchorMin = rt.anchorMax = new Vector2(Half, Half);
+            rt.pivot = new Vector2(Half, 1f);
+            rt.sizeDelta = new Vector2(WorkW, WorkH);
+            Pic(Fill("Back", root.transform), null, WorkBack);
+            RectTransform fill = Fill("Fill", root.transform, WorkInset);
+            Pic(fill, null, WorkFill);
+            RectTransform cap = Rt(Node("Label", root.transform));
+            cap.anchorMin = cap.anchorMax = new Vector2(Half, 1f);
+            cap.pivot = new Vector2(Half, 0f);
+            cap.anchoredPosition = new Vector2(0f, WorkLabelGap);
+            cap.sizeDelta = new Vector2(WorkW, WorkLabelH);
+            Text label = Label(cap, "Defusing", WorkFont, Light, TextAnchor.MiddleCenter);
+            Outline(label);
+            var view = root.AddComponent<WorkBarView>();
+            Set(view, "fill", fill); Set(view, "label", label);
+            Save(root, HudFolder, WorkBarPrefab);
         }
 
         // ================= Rulebook =================
@@ -171,8 +328,7 @@ namespace MinefieldClerk.EditorTools
         {
             GameObject root = Node("RulebookWindow", null);
             Stretch(Rt(root));
-            Image dim = Pic(Box("Dim", root.transform, 0, 0, 0, 0), null, DimColor);
-            Stretch(dim.rectTransform);
+            Pic(Fill("Dim", root.transform), null, DimColor);
             RectTransform book = Center("Book", root.transform, BookW, BookH);
             Pic(Box("Spread", book, 0, 0, BookW, SpreadH), Spr("Rulebook/book_spread", FilterMode.Bilinear), Color.white);
 
@@ -196,7 +352,7 @@ namespace MinefieldClerk.EditorTools
             Set(win, "leftPage", left); Set(win, "rightPage", right);
             Set(win, "prev", prev); Set(win, "next", next); Set(win, "close", close);
             Set(win, "slogan", slogan); Set(win, "footer", footer);
-            Save(root, RulebookPrefab);
+            Save(root, WindowsFolder, RulebookPrefab);
         }
 
         private static BookPageView BuildPage(string name, Transform book, float centerX)
@@ -312,6 +468,28 @@ namespace MinefieldClerk.EditorTools
             rt.offsetMin = rt.offsetMax = Vector2.zero;
         }
 
+        /// <summary>A child that sits in a layout group with a fixed height.</summary>
+        private static RectTransform LayoutBox(string name, Transform parent, float height)
+        {
+            RectTransform rt = Rt(Node(name, parent));
+            rt.gameObject.AddComponent<LayoutElement>().preferredHeight = height;
+            return rt;
+        }
+
+        /// <summary>Makes an Image draw its nine-slice borders at <paramref name="borderScale"/> x their art size.</summary>
+        private static void Sliced(Image img, float borderScale)
+        {
+            img.type = Image.Type.Sliced;
+            img.pixelsPerUnitMultiplier = 1f / borderScale;
+        }
+
+        private static void Outline(Text t)
+        {
+            var shadow = t.gameObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.85f);
+            shadow.effectDistance = new Vector2(1.5f, -1.5f);
+        }
+
         private static Image Pic(RectTransform rt, Sprite sprite, Color color)
         {
             var img = rt.gameObject.AddComponent<Image>();
@@ -370,16 +548,38 @@ namespace MinefieldClerk.EditorTools
 
         private static float Aspect(Sprite s) { return s.rect.width / s.rect.height; }
 
-        /// <summary>Makes sure the png in Resources is imported as a Sprite and returns it.</summary>
+        [System.Serializable] private class KitSprite { public string name; public int left, top, right, bottom; }
+        [System.Serializable] private class KitFile { public KitSprite[] sprites; }
+        private static Dictionary<string, KitSprite> kit;
+
+        /// <summary>Nine-slice borders of the UI kit sprites (Resources/UI/ui_kit.json), by sprite name.</summary>
+        private static KitSprite KitInfo(string name)
+        {
+            if (kit == null)
+            {
+                kit = new Dictionary<string, KitSprite>();
+                string file = "Assets/Resources/UI/ui_kit.json";
+                if (File.Exists(file)) foreach (KitSprite k in JsonUtility.FromJson<KitFile>(File.ReadAllText(file)).sprites) kit[k.name] = k;
+            }
+            kit.TryGetValue(name, out KitSprite info);
+            return info;
+        }
+
+        /// <summary>Makes sure the png in Resources is imported as a Sprite (with its kit nine-slice borders) and returns it.</summary>
         private static Sprite Spr(string resourcePath, FilterMode filter)
         {
             string path = "Assets/Resources/" + resourcePath + ".png";
             var importer = AssetImporter.GetAtPath(path) as TextureImporter;
             if (importer == null) { Debug.LogError("[UI] Missing texture " + path); return null; }
-            if (importer.textureType != TextureImporterType.Sprite || importer.spriteImportMode != SpriteImportMode.Single)
+
+            KitSprite info = KitInfo(Path.GetFileNameWithoutExtension(path));
+            Vector4 border = info == null ? Vector4.zero : new Vector4(info.left, info.bottom, info.right, info.top);
+            bool dirty = importer.textureType != TextureImporterType.Sprite || importer.spriteImportMode != SpriteImportMode.Single || importer.spriteBorder != border;
+            if (dirty)
             {
                 importer.textureType = TextureImporterType.Sprite;
                 importer.spriteImportMode = SpriteImportMode.Single;
+                importer.spriteBorder = border;
                 importer.filterMode = filter;
                 importer.mipmapEnabled = false;
                 importer.alphaIsTransparency = true;
@@ -401,9 +601,9 @@ namespace MinefieldClerk.EditorTools
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private static void Save(GameObject root, string name)
+        private static void Save(GameObject root, string folder, string name)
         {
-            PrefabUtility.SaveAsPrefabAsset(root, Folder + "/" + name + ".prefab");
+            PrefabUtility.SaveAsPrefabAsset(root, folder + "/" + name + ".prefab");
             Object.DestroyImmediate(root);
         }
     }

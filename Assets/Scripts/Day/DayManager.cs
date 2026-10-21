@@ -5,6 +5,7 @@ using MinefieldClerk.Family;
 using MinefieldClerk.Field;
 using MinefieldClerk.Player;
 using MinefieldClerk.Rules;
+using MinefieldClerk.Sound;
 
 namespace MinefieldClerk.Day
 {
@@ -12,7 +13,7 @@ namespace MinefieldClerk.Day
 
     /// <summary>
     /// M3 day loop: detector battery, end of day, debrief with pay per correct flag, quota bonus, injury and medicine.
-    /// Placeholder IMGUI screens until the real briefing/debrief art exists. Finds the scene objects by itself,
+    /// Its screens are uGUI prefabs (HUD, briefing book, debrief report, expenses). Finds the scene objects by itself,
     /// so it needs no scene wiring (it spawns when a FieldSession exists).
     /// Battery drains with time (the "sun" dims) and every probe costs a little extra. At 0 the detector is dead:
     /// no more probing, but flagging from memory and ending the day still work.
@@ -26,15 +27,8 @@ namespace MinefieldClerk.Day
     {
         public static DayManager Instance { get; private set; }
 
-        // IMGUI placeholder layout (pixels) and look.
-        private const int SmallFont = 20, BigFont = 26;
-        private const float DimMax = 0.35f;                     // darkest overlay when the battery is empty
-        private const float ToastWidth = 960f, ToastHeight = 40f, ToastBottomGap = 80f;
-        private const float ToastSeconds = 2.5f;
         private const string ObjectName = "DayManager";
-
-        private static readonly Color TextColor = new Color(1f, 0.94f, 0.78f);
-        private static readonly Color DimColor = new Color(0.12f, 0.05f, 0.2f);
+        private const string HudPrefab = "UI/Hud/HudWindow", BookPrefab = "UI/Windows/RulebookWindow", DebriefPrefab = "UI/Windows/DebriefWindow", ExpensesPrefab = "UI/Windows/ExpensesWindow";
 
         // Battery length, pay, quota and medicine numbers live in the difficulty JSON files
         // (Assets/Resources/Difficulties), see DifficultySettings.
@@ -42,8 +36,6 @@ namespace MinefieldClerk.Day
         [Tooltip("Seconds after a fatal blast before the debrief opens")]
         [SerializeField] private float deathDelay = 2.5f;
 
-        private const int OverlayDepth = -100;   // lower depth is drawn on top of the dev readout
-        private const string BookPrefab = "UI/Windows/RulebookWindow", DebriefPrefab = "UI/Windows/DebriefWindow";
         private const string BookStamp = "AMENDED";
         private const string BookFooter = "A / D or arrow keys: turn the page      B: close the Book";
         private const string BriefingFooterPrefix = "A / D: turn the page      Enter or B: begin the shift      The Republic is counting on you, citizen ";
@@ -51,11 +43,15 @@ namespace MinefieldClerk.Day
         private const string WorkHint = "Hold E: disarm / lift ordnance";
         private const string HudKeyHint = "Enter: end the day   B: rulebook";
         private const string HudKeyHintLocked = "B: rulebook";
+        private const float BatteryLowShare = 0.2f;        // the low-battery warning sounds at this share of the battery left
+        private const float StampDelaySeconds = 0.8f;      // the approval stamp lands this long after the report opens
 
         private RulebookWindow bookWin;
         private DebriefWindow debriefWin;
+        private ExpensesWindow expensesWin;
+        private HudView hudView;
+        private List<ExpenseLine> expenseLines = new List<ExpenseLine>();
         private int bookShown;   // 0 none, 1 briefing, 2 opened in the field
-        private readonly DayHud hud = new DayHud();
         private readonly Rulebook rulebook = new Rulebook();
         private RuleSet rules = RuleSet.Empty;
         private int probesToday;
@@ -68,12 +64,10 @@ namespace MinefieldClerk.Day
         private PlayerController player;
 
         private float battery;
+        private bool batteryWarned;
         private float deathTimer;
         private bool carryInjured;
         private string reportTitle = "";
-        private string toast = "";
-        private float toastUntil;
-        private GUIStyle small, big, toastStyle;
 
         /// <summary>Ids of optional expenses skipped last evening (the family system reacts to these later).</summary>
         public readonly List<string> UnpaidExpenses = new List<string>();
@@ -86,6 +80,8 @@ namespace MinefieldClerk.Day
         public bool CanAct => Playing && !showRulebook;
         /// <summary>The Book of Regulations is open over the field.</summary>
         public bool BookOpen => showRulebook;
+        /// <summary>The family page (the evening expenses) is on screen.</summary>
+        public bool ExpensesOpen => expensesWin != null && expensesWin.Visible;
         /// <summary>The rules in force today.</summary>
         public RuleSet Rules => rules;
         /// <summary>Defuse kits still in the bag (0 on days without the collect-mines rule).</summary>
@@ -143,8 +139,7 @@ namespace MinefieldClerk.Day
 
         public void Notify(string text)
         {
-            toast = text;
-            toastUntil = Time.time + ToastSeconds;
+            if (hudView != null) hudView.ShowToast(text);
         }
 
         private void Awake()
@@ -154,26 +149,49 @@ namespace MinefieldClerk.Day
             mines = FindAnyObjectByType<MineField>();
             health = FindAnyObjectByType<PlayerHealth>();
             player = FindAnyObjectByType<PlayerController>();
+            hudView = UiCanvas.Spawn<HudView>(HudPrefab, UiCanvas.Layer.Hud);
             bookWin = UiCanvas.Spawn<RulebookWindow>(BookPrefab);
             debriefWin = UiCanvas.Spawn<DebriefWindow>(DebriefPrefab);
-            if (bookWin != null) { bookWin.Hide(); bookWin.Closed += OnBookClosed; }
-            if (debriefWin != null) { debriefWin.Hide(); debriefWin.Finished += NextDay; }
+            expensesWin = UiCanvas.Spawn<ExpensesWindow>(ExpensesPrefab);
+            bookWin.Hide(); bookWin.Closed += OnBookClosed;
+            debriefWin.Hide(); debriefWin.Finished += OnReportDone;
+            expensesWin.Hide(); expensesWin.Finished += NextDay;
         }
 
         private void LateUpdate()
         {
             SyncBook();
+            UpdateHud();
+        }
+
+        private void UpdateHud()
+        {
+            bool show = Phase == DayPhase.Playing && !showRulebook;
+            hudView.SetContentVisible(show);
+            hudView.Apply(new HudState
+            {
+                Day = Day, Difficulty = DifficultyName, Money = Money,
+                CollectMode = rules.CollectMines, Collected = mines.CollectedCount, Flags = mines.FlagCount, Quota = Quota,
+                Battery01 = Battery01, BatteryEmpty = BatteryEmpty,
+                HasProbeLimit = rules.HasProbeLimit, Probes = probesToday, ProbeCap = rules.ProbeCap,
+                HasKits = rules.CollectMines, KitsLeft = KitsLeft, KitsTotal = rules.DefuseKits,
+                KeyHint = (BatteryEmpty || QuotaMet) ? HudKeyHint : HudKeyHintLocked, WorkHint = WorkHint,
+            });
         }
 
         /// <summary>Shows or hides the book window to match the phase.</summary>
         private void SyncBook()
         {
-            if (bookWin == null) return;
-            int want = Phase == DayPhase.Briefing ? 1 : (Phase == DayPhase.Playing && showRulebook ? 2 : 0);
+                        int want = Phase == DayPhase.Briefing ? 1 : (Phase == DayPhase.Playing && showRulebook ? 2 : 0);
             if (want == bookShown) return;
             bookShown = want;
-            if (want == 0) bookWin.Hide();
-            else bookWin.Show(rulebook, BookStamp, want == 1 ? BriefingFooterPrefix + BasicRules.Surname : BookFooter);
+            if (want == 0)
+            {
+                bookWin.Hide();
+                return;
+            }
+            bookWin.Show(rulebook, BookStamp, want == 1 ? BriefingFooterPrefix + BasicRules.Surname : BookFooter);
+            Sfx.Play(SfxEvent.BookOpen);
         }
 
         private void OnBookClosed()
@@ -200,8 +218,11 @@ namespace MinefieldClerk.Day
             kitsUsed = 0;
             showRulebook = false;
             bookShown = 0;   // the window is shown again for the new briefing
+            debriefWin.Hide();
+            expensesWin.Hide();
             rulebook.Rebuild(Day, rules);
             battery = MaxBattery;
+            batteryWarned = false;
             deathTimer = 0f;
             // A new field can start straight from a debrief (difficulty change, R). With rules in force the shift
             // starts with the briefing; Update keeps the deminer frozen until it is dismissed.
@@ -234,6 +255,7 @@ namespace MinefieldClerk.Day
                 }
                 if (DevTools.DevMode.Enabled && kb != null && kb.f9Key.wasPressedThisFrame) { EndDay(); return; }   // dev: skip the quota gate
                 if (!BatteryEmpty) battery = Mathf.Max(0f, battery - Time.deltaTime);
+                WarnLowBattery();
 
                 if (health.Dead)
                 {
@@ -247,10 +269,19 @@ namespace MinefieldClerk.Day
                     else EndDay();
                 }
             }
-            else if (enter && debriefWin != null && debriefWin.Advance())
+            else if (enter)
             {
-                NextDay();
+                if (expensesWin.Visible) expensesWin.Confirm();
+                else if (debriefWin.Visible) debriefWin.Confirm();
             }
+        }
+
+        /// <summary>One warning when the detector battery runs low (the wind-down of the shift).</summary>
+        private void WarnLowBattery()
+        {
+            if (batteryWarned || BatteryEmpty || battery > MaxBattery * BatteryLowShare) return;
+            batteryWarned = true;
+            Sfx.Play(SfxEvent.BatteryLow);
         }
 
         private void TurnPagesByKey(Keyboard kb)
@@ -260,8 +291,10 @@ namespace MinefieldClerk.Day
             if (kb.leftArrowKey.wasPressedThisFrame || kb.aKey.wasPressedThisFrame) step--;
             if (kb.rightArrowKey.wasPressedThisFrame || kb.dKey.wasPressedThisFrame) step++;
             if (step == 0) return;
+            int spread = rulebook.SpreadIndex;
             rulebook.Turn(step);
-            if (bookWin != null) bookWin.Refresh();
+            if (rulebook.SpreadIndex != spread) Sfx.Play(SfxEvent.PageTurn);
+            bookWin.Refresh();
         }
 
         private void ToggleRulebook()
@@ -355,9 +388,13 @@ namespace MinefieldClerk.Day
             }
             rows.Add(Row("Balance", Money.ToString()));
 
-            debriefWin.Open(reportTitle, rows, lines, Money);
+            expenseLines = lines;
+            debriefWin.Open(reportTitle, rows, lines.Count == 0);
             Phase = DayPhase.Debrief;
             player.Frozen = true;
+
+            Sfx.Play(SfxEvent.DayEndBell);
+            if (quotaMet && !health.Dead) Sfx.PlayDelayed(SfxEvent.StampApproved, StampDelaySeconds);
         }
 
         private static ReportRow Row(string label, string value, bool bad = false)
@@ -382,12 +419,21 @@ namespace MinefieldClerk.Day
             return result;
         }
 
+        /// <summary>The report was read: the family page follows when there is anything to pay, otherwise the next day starts.</summary>
+        private void OnReportDone()
+        {
+            debriefWin.Hide();
+            if (expenseLines.Count > 0) expensesWin.Open(expenseLines, Money);
+            else NextDay();
+        }
+
         public void NextDay()
         {
             carryInjured = false;
             UnpaidExpenses.Clear();
-            if (debriefWin != null) debriefWin.Hide();
-            foreach (ExpenseLine l in debriefWin.Lines)
+            debriefWin.Hide();
+            expensesWin.Hide();
+            foreach (ExpenseLine l in expenseLines)
             {
                 if (l.Checked) Money -= l.Cost;
                 else
@@ -400,41 +446,6 @@ namespace MinefieldClerk.Day
             session.NewDay();   // regenerates the field; OnRegenerated resets battery and phase
             if (carryInjured) health.Hit();
             carryInjured = false;
-        }
-
-        private void OnGUI()
-        {
-            GUI.depth = OverlayDepth;
-            if (small == null)
-            {
-                small = new GUIStyle(GUI.skin.label) { fontSize = SmallFont, fontStyle = FontStyle.Bold };
-                small.normal.textColor = TextColor;
-                small.hover.textColor = small.active.textColor = small.focused.textColor = TextColor;   // IMGUI labels turn white on hover otherwise
-                big = new GUIStyle(small) { fontSize = BigFont };
-                toastStyle = new GUIStyle(big) { alignment = TextAnchor.UpperCenter };
-            }
-
-            // The sun sinks as the battery drains.
-            Color dim = DimColor;
-            dim.a = (1f - Battery01) * DimMax;
-            GUI.color = dim;
-            GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
-            GUI.color = Color.white;
-
-            if (Phase == DayPhase.Playing && !showRulebook) hud.Draw(new HudState
-            {
-                Day = Day, Difficulty = DifficultyName, Money = Money,
-                CollectMode = rules.CollectMines, Collected = mines.CollectedCount, Flags = mines.FlagCount, Quota = Quota,
-                Battery01 = Battery01, BatteryEmpty = BatteryEmpty, Playing = Playing,
-                HasProbeLimit = rules.HasProbeLimit, Probes = probesToday, ProbeCap = rules.ProbeCap,
-                HasKits = rules.CollectMines, KitsLeft = KitsLeft, KitsTotal = rules.DefuseKits,
-                KeyHint = (BatteryEmpty || QuotaMet) ? HudKeyHint : HudKeyHintLocked, WorkHint = WorkHint,
-            });
-
-            if (Time.time < toastUntil)
-            {
-                GUI.Label(new Rect(Screen.width * Num.Half - ToastWidth * Num.Half, Screen.height - ToastBottomGap, ToastWidth, ToastHeight), toast, toastStyle);
-            }
         }
     }
 }

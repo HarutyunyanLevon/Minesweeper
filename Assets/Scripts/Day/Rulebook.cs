@@ -7,7 +7,7 @@ namespace MinefieldClerk.Day
     /// <summary>
     /// The pages of the Book of Regulations for one shift, in the order of the day's rule list (Resources/Days/days.json):
     /// the basic decrees wherever "basic" stands, the other directives where their ids stand. The book shows two pages at once (a spread: even page on
-    /// the left, the next on the right). Keeps the spread position; drawing is RulePaper's job.
+    /// the left, the next on the right). Keeps the spread position; drawing is RulebookWindow's job.
     /// The book opens on the spread holding the newest directive that is new or changed since the previous day (or the
     /// newest directive if none changed, or the first spread if there are no directives). After that it stays on the
     /// spread the player left it on. Rebuild, called at the start of every shift, resets all of this.

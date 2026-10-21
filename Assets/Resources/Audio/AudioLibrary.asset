@@ -1,0 +1,167 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bfec950b07182f94b870f2fe2c2199f4, type: 3}
+  m_Name: AudioLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::MinefieldClerk.Sound.AudioLibrary
+  sfxMaster: 1
+  musicMaster: 1
+  musicFadeSeconds: 2.5
+  footstepSeconds: 0.42
+  leavesGapSeconds: {x: 14, y: 32}
+  events:
+  - name: amb_leaves
+    clips:
+    - {fileID: 8300000, guid: d9e42e15b29feb0489fe9aceec008612, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: amb_office_hum
+    clips:
+    - {fileID: 8300000, guid: 37f510a7049a49c45a53eabbeff41897, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: amb_wind_field
+    clips:
+    - {fileID: 8300000, guid: e57ab408e473c2a4591c1039fc2bf169, type: 3}
+    - {fileID: 8300000, guid: 45a1991d044f28046877946abbec6c68, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: battery_low
+    clips:
+    - {fileID: 8300000, guid: 1e41d9239a55a824083215880f39c77a, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: book_open
+    clips:
+    - {fileID: 8300000, guid: 52d296ed06605434da3f36c289a73c52, type: 3}
+    - {fileID: 8300000, guid: 0a6060eb563fa644894ed1780341017f, type: 3}
+    - {fileID: 8300000, guid: 4402f3d52b6bf914ea7abcc819cf0c0d, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: collect_pickup
+    clips:
+    - {fileID: 8300000, guid: 7159eb5ebfc43334dbf15b2dbfa2dafa, type: 3}
+    - {fileID: 8300000, guid: 361336afddd5f514995251eb3f07c867, type: 3}
+    - {fileID: 8300000, guid: e67ddf0128194164b9894195c6b40e25, type: 3}
+    - {fileID: 8300000, guid: a2da84e2740dae74298b62ff4d90dc4c, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: day_end_bell
+    clips:
+    - {fileID: 8300000, guid: fb5936e66df3c7e45ab52905b36a4e21, type: 3}
+    - {fileID: 8300000, guid: 1f5adcdf339d2f240b11ec52c847340e, type: 3}
+    - {fileID: 8300000, guid: fad12a057953b1d459e660d9159b28c0, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: defuse_snip
+    clips:
+    - {fileID: 8300000, guid: 5b97b61a9b8cb6a4786d07f07209ee50, type: 3}
+    - {fileID: 8300000, guid: 7262614d9e8c284489dd72976eaa1dac, type: 3}
+    - {fileID: 8300000, guid: af207aa45da531f419917cbbb6d8539c, type: 3}
+    - {fileID: 8300000, guid: bfab35636c3ab0f4ebf16361a27d9c9f, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: dig_hole
+    clips:
+    - {fileID: 8300000, guid: 79ed16f9dd76c4f43800e7ca3b19804d, type: 3}
+    - {fileID: 8300000, guid: 08eefc75778520f4a9e86893e366ddb4, type: 3}
+    - {fileID: 8300000, guid: 9987d88bd0f161043b54cb2994c7836a, type: 3}
+    - {fileID: 8300000, guid: 6f750ba55a3ce724c845ba0fbd622f8e, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: dud_fizzle
+    clips:
+    - {fileID: 8300000, guid: 5d9648da2d5757646959dfb036cb009a, type: 3}
+    - {fileID: 8300000, guid: a0f18d034c9119d4ab0a7dc4bce7b71a, type: 3}
+    - {fileID: 8300000, guid: 06eca350ba3103f4897ae6cc17da4061, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: flag_plant
+    clips:
+    - {fileID: 8300000, guid: ae34cd82f2e317e4fb27a9ffbba40d2a, type: 3}
+    - {fileID: 8300000, guid: 7df52b7ae069d5b409627993ae3d5b67, type: 3}
+    - {fileID: 8300000, guid: 89c6e6a311241fd46871ec70a4e6d535, type: 3}
+    - {fileID: 8300000, guid: 45e58469375833d44a16e69c76904c6b, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: mine_arm_beep
+    clips:
+    - {fileID: 8300000, guid: 7a06cecfd18c2ae42ad56160b5351408, type: 3}
+    - {fileID: 8300000, guid: bd77bb6e2e620b843be8b6058f225aed, type: 3}
+    - {fileID: 8300000, guid: fa6286be483a3304eb3081f67e4dbe57, type: 3}
+    - {fileID: 8300000, guid: 85a03b3c97d8efc4f9cbe8fc754c6943, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: mine_explosion
+    clips:
+    - {fileID: 8300000, guid: bd50dde9ff5722e459140cd321000445, type: 3}
+    - {fileID: 8300000, guid: 1d5614ed76045b04b905a35954e0b3d0, type: 3}
+    - {fileID: 8300000, guid: 9db42737b30e49044928408201cc7459, type: 3}
+    - {fileID: 8300000, guid: 4f0cb410b77296940a46d6acf87e2753, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: page_turn
+    clips:
+    - {fileID: 8300000, guid: 3eb0a49b507815f4cb2a8a9e1a7df765, type: 3}
+    - {fileID: 8300000, guid: 5fba4e226f2a16b449b18573f20263eb, type: 3}
+    - {fileID: 8300000, guid: 0fa64d3fb7867f744a52b70ae5335528, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: player_death
+    clips:
+    - {fileID: 8300000, guid: 2a7f3d342c2b53146b42c76b9f761559, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: player_hurt
+    clips:
+    - {fileID: 8300000, guid: 3cce841978b92d44990030930b3b9b6f, type: 3}
+    - {fileID: 8300000, guid: 334cd08caca4a3743b4660ad6796b52b, type: 3}
+    - {fileID: 8300000, guid: e81e6613fe40a024592e7b86dee3e31a, type: 3}
+    - {fileID: 8300000, guid: 6bfdec91214818743bfe3ff8538f9789, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: stamp_approved
+    clips:
+    - {fileID: 8300000, guid: 95a1de04374c1814aba2922b74c314f3, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: step_dirt
+    clips:
+    - {fileID: 8300000, guid: 6d3df44ab57ced8479a1afe10b11cd77, type: 3}
+    - {fileID: 8300000, guid: 55cb3788c2557fa48ac60a2bd71025f5, type: 3}
+    - {fileID: 8300000, guid: 0de741b1ab6dba145b4214137918cb0f, type: 3}
+    - {fileID: 8300000, guid: ab0b3754d089364489969dcb0a81d2e8, type: 3}
+    - {fileID: 8300000, guid: 52897f5798f8e754cb8986f54ef1cd04, type: 3}
+    - {fileID: 8300000, guid: fb0393bee9851144582d2d1dbccf2562, type: 3}
+    - {fileID: 8300000, guid: 9efa873c228434a4988bb55b9afba92f, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: ui_click
+    clips:
+    - {fileID: 8300000, guid: 0f31868a30231284daf2d9a968fe0dbf, type: 3}
+    - {fileID: 8300000, guid: 9397c7b9c0a72394fb8def4a3e0ffd98, type: 3}
+    - {fileID: 8300000, guid: df28481bf4b5736498a06b0d3f7f7e76, type: 3}
+    - {fileID: 8300000, guid: c09a705d9aafb6143aad16141622d6f9, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  music:
+  - name: briefing
+    clip: {fileID: 8300000, guid: fa04ca35da3ea7941ba6879c9b61a25b, type: 3}
+    volume: 0.6
+  - name: field
+    clip: {fileID: 8300000, guid: 5670f6d2e074f3a4f942ba2c5af77354, type: 3}
+    volume: 0.6
+  - name: report
+    clip: {fileID: 8300000, guid: 88f71089931a4184fb5be9d15bce0b1c, type: 3}
+    volume: 0.6
+  - name: titleMinistry
+    clip: {fileID: 8300000, guid: 5104c1d6d0cc73c43adb5386fd38b929, type: 3}
+    volume: 0.6

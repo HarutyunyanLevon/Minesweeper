@@ -1,20 +1,29 @@
-# Editing the briefing and debrief windows
+# Editing the UI
 
-Both windows are ordinary Unity prefabs in `Assets/Resources/UI/Windows/`:
+Every screen is a prefab you edit in Unity (double-click it, edit in Prefab Mode, save, press Play). No code change is needed.
 
-- `RulebookWindow.prefab` - the Book of Regulations (daily briefing, and the B key in the field).
-- `DebriefWindow.prefab` - the end-of-day report (page 1) and the family page with expenses (page 2).
+| Prefab | What it is | Canvas |
+|---|---|---|
+| `Resources/UI/Hud/HudWindow` | In-shift HUD: day/money/quota plates, battery, key hints, hotbar, toast line, dusk overlay | Hud (1920 x 1080) |
+| `Resources/UI/Hud/WorkBar` | Progress bar above the deminer while defusing or collecting | Hud |
+| `Resources/UI/Windows/RulebookWindow` | Book of Regulations (briefing, and the B key) | Windows (1024 x 660) |
+| `Resources/UI/Windows/DebriefWindow` | Page 1 of the evening: the state report (rows are written on the form's lines) | Windows |
+| `Resources/UI/Windows/ExpensesWindow` | Page 2: the family page with the locket, the note and the notebook with checkable expenses | Windows |
 
-## How to edit
-1. Double-click a prefab (Prefab Mode). Move, resize, recolour, swap sprites or fonts like any uGUI object.
-2. Overlapping layouts are switched off in the prefab: in DebriefWindow turn `FamilyPage` on to edit it (and `ReportPage` off); in RulebookWindow each page has `PosterGroup`, `BodyPlain`/`PlainTitle` and `BareGroup`, which are shown or hidden by code at runtime.
-3. `RowTemplate` and `ExpenseTemplate` are the row looks; the game clones them and hides the originals.
-4. Text with the `OsFont` component uses a handwriting font from Windows (see its `Font Names` list).
-5. Save the prefab and press Play. No code change needed.
+Each canvas scales with the screen (Expand), so design at its reference size.
+
+## Tips
+- Templates stay visible in the prefab so you can style them: `RowTemplate` (report), `ExpenseTemplate` (expenses). The game clones them per line and hides the original.
+- Overlapping layouts in `RulebookWindow` (`PosterGroup`, `PlainTitle`/`BodyPlain`, `BareGroup`) are shown or hidden by code per page; toggle them on in the Inspector to edit them.
+- `HudView` / `HotbarSlot` / `WorkBarView` / `DebriefWindow` / `ExpensesWindow` / `RulebookWindow` expose their texts, colours and format strings (`Day {0} ({1})`, `Kits {0}/{1}`, ...) in the Inspector.
+- Text with `OsFont` uses a handwriting font from Windows (`Font Names` list).
+- Sprites live in `Resources/UI` (kit) and `Resources/Debrief`, `Resources/Rulebook`. Nine-slice borders come from `Resources/UI/ui_kit.json`.
 
 ## Rebuilding from scratch
-Menu `Minefield > UI > Build Windows` recreates both prefabs and overwrites your edits. All default positions are constants at the top of `Assets/Editor/UiWindowBuilder.cs`.
+`Minefield > UI > Build Prefabs` recreates every prefab and OVERWRITES your edits. Default positions and sizes are the constants at the top of `Assets/Editor/UiWindowBuilder.cs`. Prefer editing the prefabs.
 
-## Art
-- Debrief: `Resources/Debrief/report_form.png`, `family_table.png`, `locket_open.png`, `notebook.png` (Soviet spiral notebook).
-- Book: `Resources/Rulebook/book_spread.png`, `poster_ribbon.png`, posters in `Resources/Rulebook/Posters/`.
+## Housekeeping
+- `Minefield > Tools > Audit Unused Assets` writes `audit.txt` (project root): assets under Art and Resources that no scene, prefab or script mentions. Rulebook posters are loaded by name from `basic_rules.json`, so they show up there although they are used.
+- `Minefield > Tools > Delete Files Listed In delete_list.txt` deletes the `Assets/...` paths listed (one per line).
+- Removed UI kit extras (wide buttons, speech panel, heart, tags, ...) are still in the SpriteCook UI kit and can be fetched again.
+- The dev readout (`DevHud`, DEV ON) is the only IMGUI left; it is a debug tool.

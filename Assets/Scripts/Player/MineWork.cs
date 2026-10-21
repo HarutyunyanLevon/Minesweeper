@@ -3,6 +3,7 @@ using UnityEngine.InputSystem;
 using MinefieldClerk.Day;
 using MinefieldClerk.Field;
 using MinefieldClerk.Rules;
+using MinefieldClerk.Sound;
 
 namespace MinefieldClerk.Player
 {
@@ -15,22 +16,17 @@ namespace MinefieldClerk.Player
     /// </summary>
     public class MineWork : MonoBehaviour
     {
-        // Progress bar (IMGUI placeholder), drawn above the deminer's head.
-        private const float BarWidth = 140f, BarHeight = 14f, BarInset = 2f, LabelHeight = 24f, LabelGap = 4f;
+        private const string BarPrefab = "UI/Hud/WorkBar";
         private const float BarLiftWorld = 1f;          // world units above the feet
-        private const int LabelFont = 18;
+        private const string DefuseLabel = "Defusing", CollectLabel = "Collecting";
         private const float ActionRepeatSeconds = 0.5f;  // the flag animation replays this often while working
         private const string NoKits = "No defuse kits left.";
-
-        private static readonly Color BarBack = new Color(0f, 0f, 0f, 0.7f);
-        private static readonly Color BarFill = new Color(0.95f, 0.8f, 0.3f);
-        private static readonly Color LabelColor = new Color(1f, 0.94f, 0.78f);
 
         private PlayerController player;
         private MineField mines;
         private PlayerHealth health;
         private DeminerSprites sprites;
-        private GUIStyle label;
+        private WorkBarView bar;
 
         private Vector3Int workCell;
         private CellWork kind;
@@ -47,6 +43,8 @@ namespace MinefieldClerk.Player
             mines = field;
             health = playerHealth;
             sprites = player.GetComponent<DeminerSprites>();
+            bar = UiCanvas.Spawn<WorkBarView>(BarPrefab, UiCanvas.Layer.Hud);
+            bar.Hide();
         }
 
         private void OnDisable()
@@ -120,12 +118,14 @@ namespace MinefieldClerk.Player
             {
                 day.SpendKit();   // the attempt costs a kit whatever is under the flag
                 DefuseOutcome result = mines.Defuse(cell);
+                Sfx.Play(SfxEvent.DefuseSnip);
                 day.Notify(result == DefuseOutcome.Defused
                     ? "Mine defused. Kits left: " + day.KitsLeft + ". Hold E to collect it."
                     : "Nothing buried here. The kit is wasted and the flag is removed. Kits left: " + day.KitsLeft + ".");
             }
             else if (mines.Collect(cell))
             {
+                Sfx.Play(SfxEvent.CollectPickup);
                 day.Notify("Mine collected (" + mines.CollectedCount + ").");
             }
             // The next frame starts the follow-up job (defused -> collect) if the button is still held and one exists.
@@ -160,28 +160,15 @@ namespace MinefieldClerk.Player
             return (kb != null && kb.eKey.isPressed) || (pad != null && pad.buttonNorth.isPressed);
         }
 
-        private void OnGUI()
+        private void LateUpdate()
         {
-            if (!Busy) return;
             Camera cam = Camera.main;
-            if (cam == null) return;
-
-            if (label == null)
+            if (!Busy || cam == null)
             {
-                label = new GUIStyle(GUI.skin.label) { fontSize = LabelFont, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
-                label.normal.textColor = LabelColor;
+                if (bar != null) bar.Hide();
+                return;
             }
-
-            Vector3 screen = cam.WorldToScreenPoint(player.transform.position + Vector3.up * BarLiftWorld);
-            float x = screen.x - BarWidth * Num.Half;
-            float y = Screen.height - screen.y;
-
-            GUI.color = BarBack;
-            GUI.DrawTexture(new Rect(x, y, BarWidth, BarHeight), Texture2D.whiteTexture);
-            GUI.color = BarFill;
-            GUI.DrawTexture(new Rect(x + BarInset, y + BarInset, (BarWidth - BarInset * 2f) * Mathf.Clamp01(progress / duration), BarHeight - BarInset * 2f), Texture2D.whiteTexture);
-            GUI.color = Color.white;
-            GUI.Label(new Rect(x, y - LabelHeight - LabelGap, BarWidth, LabelHeight), kind == CellWork.Defuse ? "Defusing" : "Collecting", label);
+            bar.Show(cam, player.transform.position + Vector3.up * BarLiftWorld, progress / duration, kind == CellWork.Defuse ? DefuseLabel : CollectLabel);
         }
     }
 }

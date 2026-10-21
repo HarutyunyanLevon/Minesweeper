@@ -4,6 +4,7 @@ using UnityEngine.InputSystem;
 using MinefieldClerk.DevTools;
 using MinefieldClerk.Day;
 using MinefieldClerk.Field;
+using MinefieldClerk.Sound;
 
 namespace MinefieldClerk.Player
 {
@@ -21,6 +22,7 @@ namespace MinefieldClerk.Player
     {
         private const float FootprintCells = 0.5f;   // side of the body's footprint, in cells
         private const float StepShare = 0.15f;        // share of the footprint that must lie on a mine's cell to set it off
+        private const float FlagWaveDelaySeconds = 0.12f;   // the flag cloth sounds this long after the stake
 
         [SerializeField] private PlayerController player;
         [SerializeField] private MineField mines;
@@ -57,6 +59,13 @@ namespace MinefieldClerk.Player
             mines.Regenerated -= OnRegenerated;
         }
 
+        /// <summary>The metal stake rings first, then the cloth catches the wind (the second layer is optional).</summary>
+        private static void PlayFlagSound()
+        {
+            Sfx.Play(SfxEvent.FlagPlant);
+            if (Sfx.Has(SfxEvent.FlagWave)) Sfx.PlayDelayed(SfxEvent.FlagWave, FlagWaveDelaySeconds);
+        }
+
         private void OnArmed(Vector3Int cell, float fuse)
         {
             if (stepping || cell.Flat() == player.CurrentCell.Flat()) underFoot.Add(cell.Flat());
@@ -79,6 +88,7 @@ namespace MinefieldClerk.Player
         {
             OnResolved(cell);
             health.Hit();
+            Sfx.Play(health.Dead ? SfxEvent.PlayerDeath : SfxEvent.PlayerHurt);
         }
 
         /// <summary>Share (0..1) of the body footprint, centred at <paramref name="body"/>, that lies on a cell.</summary>
@@ -174,14 +184,18 @@ namespace MinefieldClerk.Player
                 {
                     if (sprites != null) sprites.PlayAction("probe");
                     ProbeOutcome result = mines.Probe(cell);
-                    if (day != null && (result == ProbeOutcome.Safe || result == ProbeOutcome.Armed)) day.RegisterProbe();
+                    if (result == ProbeOutcome.Safe || result == ProbeOutcome.Armed)
+                    {
+                        Sfx.Play(SfxEvent.DigHole);
+                        if (day != null) day.RegisterProbe();
+                    }
                 }
             }
             else if (flag)
             {
                 player.FaceCell(cell);
                 if (sprites != null) sprites.PlayAction("flag");
-                mines.ToggleFlag(cell);
+                if (mines.ToggleFlag(cell)) PlayFlagSound();
             }
         }
     }
