@@ -6,31 +6,17 @@ using MinefieldClerk.Sound;
 namespace MinefieldClerk.Field
 {
     /// <summary>
-    /// Sound cues of the mine fuse: a click when a mine is found, then a slow clockwork wind-up that lasts the whole fuse
-    /// and ends in a boom (or an anticlimactic fizzle for a dud). Creates itself in any scene that has a MineField.
-    /// The wind-up, boom and fizzle use the recorded variants from the audio library. Without a wind-up recording the
-    /// fuse falls back to rising beeps, and the synthesised sounds below are the last fallback.
+    /// Sound cues of the mine fuse: the plate click when a mine is found, then a slow clockwork wind-up that lasts the whole
+    /// fuse and ends in an explosion (or an anticlimactic fizzle for a dud). Creates itself in any scene that has a MineField.
+    /// Every sound is a recording from the audio library (mine_plate, mine_windup, mine_explosion, dud_fizzle); an event
+    /// without recordings is silent and warns once in the Console.
     /// </summary>
     public class MineAudio : MonoBehaviour
     {
         private const string ObjectName = "MineAudio";
-
-        [Header("Volumes")]
-        [SerializeField] private float clackVolume = 0.9f;
-        [SerializeField] private float boomVolume = 1f;
-        [SerializeField] private float dudVolume = 0.8f;
-        [SerializeField] private float beepVolume = 0.7f;
-        [Header("Beep pitch rises from start to end as the fuse burns")]
-        [SerializeField] private float beepPitchStart = 1f;
-        [SerializeField] private float beepPitchEnd = 1.6f;
-
         private const float Flat2D = 0f;   // AudioSource.spatialBlend: fully 2D
 
         private MineField mines;
-        private AudioSource sfx;
-        private AudioSource beepSource;
-        private AudioClip beep, clack, boom, dud;
-        private readonly Dictionary<Vector3Int, Coroutine> beeps = new Dictionary<Vector3Int, Coroutine>();
         private readonly Dictionary<Vector3Int, AudioSource> windups = new Dictionary<Vector3Int, AudioSource>();
         private readonly Stack<AudioSource> idleWindups = new Stack<AudioSource>();
 
@@ -41,18 +27,6 @@ namespace MinefieldClerk.Field
             new GameObject(ObjectName).AddComponent<MineAudio>();
         }
 
-        private void Awake()
-        {
-            sfx = gameObject.AddComponent<AudioSource>();
-            beepSource = gameObject.AddComponent<AudioSource>();
-            sfx.spatialBlend = Flat2D;
-            beepSource.spatialBlend = Flat2D;
-            beep = ProceduralSfx.Beep();
-            clack = ProceduralSfx.Clack();
-            boom = ProceduralSfx.Boom();
-            dud = ProceduralSfx.Dud();
-        }
-
         private void Start()
         {
             mines = FindAnyObjectByType<MineField>();
@@ -60,7 +34,7 @@ namespace MinefieldClerk.Field
             mines.MineArmed += OnArmed;
             mines.MineTriggered += OnTriggered;
             mines.MineDud += OnDud;
-            mines.Regenerated += StopAllBeeps;
+            mines.Regenerated += StopAllFuses;
         }
 
         private void OnDestroy()
@@ -69,37 +43,25 @@ namespace MinefieldClerk.Field
             mines.MineArmed -= OnArmed;
             mines.MineTriggered -= OnTriggered;
             mines.MineDud -= OnDud;
-            mines.Regenerated -= StopAllBeeps;
+            mines.Regenerated -= StopAllFuses;
         }
 
         private void OnArmed(Vector3Int cell, float fuse)
         {
-            sfx.PlayOneShot(clack, clackVolume);
-            if (StartWindup(cell)) return;
-
-            // No wind-up recording: one recorded beep variant per fuse, so a burning mine keeps a steady voice.
-            AudioClip clip = beep;
-            float volume = beepVolume;
-            if (Sfx.TryPick(SfxEvent.MineArmBeep, out AudioClip picked, out float pickedVolume))
-            {
-                clip = picked;
-                volume = pickedVolume * beepVolume;
-            }
-            beeps[cell] = StartCoroutine(Beeps(fuse, clip, volume));
+            Sfx.Play(SfxEvent.MinePlate);
+            StartWindup(cell);
         }
 
         private void OnTriggered(Vector3Int cell)
         {
-            StopBeeps(cell);
             StopWindup(cell);
-            if (!Sfx.Play(SfxEvent.MineExplosion)) sfx.PlayOneShot(boom, boomVolume);
+            Sfx.Play(SfxEvent.MineExplosion);
         }
 
         private void OnDud(Vector3Int cell)
         {
-            StopBeeps(cell);
             StopWindup(cell);
-            if (!Sfx.Play(SfxEvent.DudFizzle)) sfx.PlayOneShot(dud, dudVolume);
+            Sfx.Play(SfxEvent.DudFizzle);
         }
 
         /// <summary>Starts the clockwork wind-up at the library's playback speed. False when there is no recording.</summary>
@@ -114,6 +76,7 @@ namespace MinefieldClerk.Field
             source.pitch = SoundDirector.CurrentLibrary.windupPitch;   // never squeezed into the fuse: a short fuse just cuts it off at the boom
             source.Play();
             windups[cell] = source;
+            AudioLog.Add(SfxEvent.MineWindup, clip, source.volume, source.pitch);
             return true;
         }
 
@@ -133,41 +96,77 @@ namespace MinefieldClerk.Field
             idleWindups.Push(source);
         }
 
-        private IEnumerator Beeps(float fuse, AudioClip clip, float volume)
+        // ------------------------------------------------------------------ cheat tools
+
+        /// <summary>A pretend mine that is not on the field, so cheat sequences use exactly the sounds and code of a real one.</summary>
+        private static readonly Vector3Int CheatCell = new Vector3Int(int.MinValue, int.MinValue, 0);
+        private Coroutine cheatSequence;
+
+        /// <summary>True while a cheat mine sequence is still running.</summary>
+        public bool CheatSequenceRunning => cheatSequence != null;
+
+        /// <summary>Plays a whole mine as the field does: the plate click, the wind-up for the fuse length, then the blast or the fizzle.</summary>
+        public void CheatSequence(float fuseSeconds, bool dud)
         {
-            float t = 0f;
-            while (true)
-            {
-                float progress = Mathf.Clamp01(t / fuse);
-                beepSource.pitch = Mathf.Lerp(beepPitchStart, beepPitchEnd, progress);
-                beepSource.PlayOneShot(clip, volume);
-                float interval = FuseTiming.BeepInterval(progress);
-                yield return new WaitForSeconds(interval);
-                t += interval;
-            }
+            CheatStop();
+            AudioLog.Mark("mine sequence: fuse " + fuseSeconds.ToString("0.0") + " s, ends in " + (dud ? "a dud" : "an explosion"));
+            cheatSequence = StartCoroutine(SequenceRoutine(fuseSeconds, dud));
         }
 
-        private void StopBeeps(Vector3Int cell)
+        /// <summary>Only the plate click.</summary>
+        public void CheatTrigger() { Sfx.Play(SfxEvent.MinePlate); }
+
+        /// <summary>Only the wind-up; it keeps going until the explosion, the dud or Stop.</summary>
+        public void CheatWindup()
         {
-            if (beeps.TryGetValue(cell, out Coroutine c))
+            CheatStop();
+            StartWindup(CheatCell);
+        }
+
+        /// <summary>The blast; it also ends a wind-up started by <see cref="CheatWindup"/>.</summary>
+        public void CheatExplosion()
+        {
+            CheatStop();
+            OnTriggered(CheatCell);
+        }
+
+        /// <summary>The anticlimactic fizzle; it also ends a wind-up started by <see cref="CheatWindup"/>.</summary>
+        public void CheatDud()
+        {
+            CheatStop();
+            OnDud(CheatCell);
+        }
+
+        /// <summary>Ends a running sequence and its wind-up without a blast or fizzle.</summary>
+        public void CheatStop()
+        {
+            if (cheatSequence != null)
             {
-                if (c != null) StopCoroutine(c);
-                beeps.Remove(cell);
+                StopCoroutine(cheatSequence);
+                cheatSequence = null;
             }
+            StopWindup(CheatCell);
+        }
+
+        private IEnumerator SequenceRoutine(float fuseSeconds, bool dud)
+        {
+            OnArmed(CheatCell, fuseSeconds);
+            yield return new WaitForSeconds(fuseSeconds);
+            cheatSequence = null;
+            if (dud) OnDud(CheatCell);
+            else OnTriggered(CheatCell);
         }
 
         /// <summary>Cheat tools: silences every fuse sound at once.</summary>
         public void StopAllSounds()
         {
-            StopAllBeeps();
-            sfx.Stop();
-            beepSource.Stop();
+            StopAllFuses();
         }
 
-        private void StopAllBeeps()
+        private void StopAllFuses()
         {
             StopAllCoroutines();
-            beeps.Clear();
+            cheatSequence = null;
             foreach (AudioSource source in windups.Values)
             {
                 source.Stop();

@@ -21,6 +21,11 @@ namespace MinefieldClerk.DevTools.Cheats
         private const float TimeLabelWidth = 90f;
         private const float SeekEndMarginSeconds = 0.05f;   // keeps a seek off the last sample, which would stop the source
         private const string ValueFormat = "0.00", TimeFormat = "0.0";
+        private const float MinSequenceFuse = 0.5f, DefaultSequenceFuse = 4f;
+        private const float MinWalkSpeed = 0.25f, MaxWalkSpeed = 3f, NormalWalkSpeed = 1f;
+        private const float StepAtOnce = float.MaxValue;   // walk timer value that makes the next update play a step
+        private const int WalkBurstSteps = 8;
+        private const string SequenceHint = "Plays a mine like the field does: plate click, wind-up for the whole fuse, then the blast or the fizzle. Every part picks a random recording. Open the Audio Log window (F9) to see which.";
         private const string NotRunning = "The sound system is not running in this scene.";
         private const string Hint = "Music and ambience normally follow the day. Pick one here to force it (it loops until you press Auto). Edits to levels last until you leave Play mode.";
 
@@ -28,6 +33,7 @@ namespace MinefieldClerk.DevTools.Cheats
         private MusicDirector music;
         private AmbienceDirector ambience;
         private MineAudio mineAudio;
+        private MineField mines;
         private AudioLibrary library;
         private AudioLibrary touchedLibrary;
         private string snapshot;
@@ -37,6 +43,13 @@ namespace MinefieldClerk.DevTools.Cheats
         private string sfxFilter = "";
         private readonly List<string> beds = new List<string>();
         private bool bedsBuilt;
+
+        private bool randomFuse = true;
+        private float sequenceFuse = DefaultSequenceFuse;
+        private bool walking;
+        private float walkSpeed = NormalWalkSpeed;
+        private float walkTimer;
+        private int stepsLeft;
 
         public override string Id => "audio";
         public override string Title => "Audio";
@@ -48,6 +61,7 @@ namespace MinefieldClerk.DevTools.Cheats
             music = MusicDirector.Instance;
             ambience = AmbienceDirector.Instance;
             Find(ref mineAudio);
+            Find(ref mines);
             library = SoundDirector.CurrentLibrary;
             musicSource = music != null ? music.Source : null;
             ambienceSource = ambience != null ? ambience.Source : null;
@@ -61,7 +75,43 @@ namespace MinefieldClerk.DevTools.Cheats
                 }
             }
 
-            status = sound == null ? NotRunning : "Sound voices playing: " + sound.PlayingVoices;
+            status = sound == null ? NotRunning : "Sound voices playing: " + sound.PlayingVoices +
+                (mineAudio != null && mineAudio.CheatSequenceRunning ? "   Mine sequence playing" : "");
+            UpdateWalk();
+        }
+
+        /// <summary>Plays the walking sounds on their own timer: the library's footstep gap divided by the walk speed.</summary>
+        private void UpdateWalk()
+        {
+            if ((!walking && stepsLeft <= 0) || sound == null || library == null) return;
+            walkTimer += Time.unscaledDeltaTime * walkSpeed;
+            if (walkTimer < library.footstepSeconds) return;
+            walkTimer = 0f;
+            Sfx.Play(SfxEvent.StepDirt);
+            if (stepsLeft > 0) stepsLeft--;
+        }
+
+        private void SetWalking(bool on)
+        {
+            walking = on;
+            if (on) walkTimer = StepAtOnce;
+        }
+
+        private void StartWalkBurst()
+        {
+            stepsLeft = WalkBurstSteps;
+            walkTimer = StepAtOnce;
+        }
+
+        private float FuseLength()
+        {
+            if (randomFuse && mines != null) return UnityEngine.Random.Range(mines.FuseMin, mines.FuseMax);
+            return sequenceFuse;
+        }
+
+        private bool RandomDud()
+        {
+            return mines != null && UnityEngine.Random.value < mines.DudChance;
         }
 
         public override void OnQuit()
@@ -93,6 +143,27 @@ namespace MinefieldClerk.DevTools.Cheats
             list.Button("Resume automatic audio", ResumeAuto, "Music and ambience follow the day again");
             list.Toggle("Pause all audio", () => AudioListener.pause, v => AudioListener.pause = v);
 
+            Func<bool> hasMineAudio = () => mineAudio != null;
+            Func<bool> hasSound = () => sound != null;
+
+            list.Section("Mine sequence");
+            list.Button("Play: explosion", () => mineAudio.CheatSequence(FuseLength(), false), SequenceHint, hasMineAudio);
+            list.Button("Play: dud", () => mineAudio.CheatSequence(FuseLength(), true), SequenceHint, hasMineAudio);
+            list.Button("Play: random ending", () => mineAudio.CheatSequence(FuseLength(), RandomDud()), "Dud or blast by the field's dud chance (Player & Field window)", hasMineAudio);
+            list.Toggle("Random fuse length", () => randomFuse, v => randomFuse = v, "Picks the fuse from the field's shortest to longest fuse, like a real mine", true).Saved();
+            list.Float("Fuse length (s)", () => sequenceFuse, v => sequenceFuse = v, MinSequenceFuse, CheatLimits.MaxFuseSeconds, CheatLimits.FuseStep, DefaultSequenceFuse, "Used when the random fuse length is off").Saved();
+            list.Button("1  Plate click", () => mineAudio.CheatTrigger(), null, hasMineAudio);
+            list.Button("2  Wind-up (keeps going)", () => mineAudio.CheatWindup(), "The fuse sound alone; end it with the explosion, the dud or Stop", hasMineAudio);
+            list.Button("3  Explosion", () => mineAudio.CheatExplosion(), null, hasMineAudio);
+            list.Button("4  Dud", () => mineAudio.CheatDud(), null, hasMineAudio);
+            list.Button("Stop sequence", () => mineAudio.CheatStop(), "Ends the sequence and its wind-up with no blast or fizzle", hasMineAudio);
+
+            list.Section("Walking");
+            list.Button("One step", () => Sfx.Play(SfxEvent.StepDirt), "A random footstep recording", hasSound);
+            list.Button("Walk " + WalkBurstSteps + " steps", StartWalkBurst, "A short walk at the footstep gap below", hasSound);
+            list.Toggle("Keep walking", () => walking, SetWalking, "Steps repeat until you switch this off");
+            list.Float("Walk speed x", () => walkSpeed, v => walkSpeed = v, MinWalkSpeed, MaxWalkSpeed, CheatLimits.SpeedStep, NormalWalkSpeed, "1 is a normal walk; the gap between steps is the footstep gap in the Mix section divided by this").Saved();
+
             list.Section("Master levels");
             list.Float("Global volume", () => AudioListener.volume, v => AudioListener.volume = v, 0f, 1f, CheatLimits.UnitStep, 1f).Saved();
             list.Float("Effects master", () => library != null ? library.sfxMaster : 0f, v => { Touch(); if (library != null) library.sfxMaster = v; }, 0f, 1f, CheatLimits.UnitStep, 1f);
@@ -112,6 +183,8 @@ namespace MinefieldClerk.DevTools.Cheats
 
         private void StopEffects()
         {
+            walking = false;
+            stepsLeft = 0;
             if (sound != null) sound.StopAllVoices();
             if (mineAudio != null) mineAudio.StopAllSounds();
         }

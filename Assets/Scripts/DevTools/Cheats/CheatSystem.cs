@@ -79,6 +79,7 @@ namespace MinefieldClerk.DevTools.Cheats
                 new DayCheatWindow(),
                 new RulesCheatWindow(),
                 new AudioCheatWindow(),
+                new AudioLogCheatWindow(),
                 new UiCheatWindow(),
                 new OverviewCheatWindow(),
             };

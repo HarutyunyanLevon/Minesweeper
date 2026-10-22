@@ -14,6 +14,7 @@ namespace MinefieldClerk.Sound
         private const string ObjectName = "Sound";
         private const int VoiceCount = 12;     // sounds that may overlap before the oldest is cut
         private const float Flat2D = 0f;       // AudioSource.spatialBlend: fully 2D
+        private const string VariantNote = "picked by hand: variant ";
 
         public static SoundDirector Instance { get; private set; }
 
@@ -79,7 +80,7 @@ namespace MinefieldClerk.Sound
         public bool PlayEvent(string eventName, float volumeScale)
         {
             if (!TryPick(eventName, out AudioClip clip, out float volume, out float jitter)) return false;
-            PlayOnVoice(clip, volume * volumeScale, jitter);
+            PlayOnVoice(eventName, clip, volume * volumeScale, jitter, null);
             return true;
         }
 
@@ -88,7 +89,7 @@ namespace MinefieldClerk.Sound
         {
             SoundEvent sound = Library != null ? Library.Find(eventName) : null;
             if (sound == null || sound.clips == null || index < 0 || index >= sound.clips.Length || sound.clips[index] == null) return false;
-            PlayOnVoice(sound.clips[index], sound.volume * Library.sfxMaster * volumeScale, sound.pitchJitter);
+            PlayOnVoice(eventName, sound.clips[index], sound.volume * Library.sfxMaster * volumeScale, sound.pitchJitter, VariantNote + (index + 1));
             return true;
         }
 
@@ -113,7 +114,7 @@ namespace MinefieldClerk.Sound
             }
         }
 
-        private void PlayOnVoice(AudioClip clip, float volume, float jitter)
+        private void PlayOnVoice(string eventName, AudioClip clip, float volume, float jitter, string note)
         {
             AudioSource voice = voices[nextVoice];
             nextVoice = (nextVoice + 1) % voices.Length;
@@ -122,6 +123,7 @@ namespace MinefieldClerk.Sound
             voice.volume = Mathf.Clamp01(volume);
             voice.pitch = 1f + Random.Range(-jitter, jitter);
             voice.Play();
+            AudioLog.Add(eventName, clip, voice.volume, voice.pitch, note);
         }
 
         public bool HasEvent(string eventName)

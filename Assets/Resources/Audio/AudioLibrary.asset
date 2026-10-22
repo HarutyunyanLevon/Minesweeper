@@ -17,6 +17,9 @@ MonoBehaviour:
   musicFadeSeconds: 2.5
   footstepSeconds: 0.42
   leavesGapSeconds: {x: 14, y: 32}
+  windupPitch: 0.85
+  fuseDuckLevel: 0.3
+  duckFadeSeconds: 0.25
   events:
   - name: amb_leaves
     clips:
@@ -86,26 +89,28 @@ MonoBehaviour:
     pitchJitter: 0.04
   - name: flag_plant
     clips:
-    - {fileID: 8300000, guid: ae34cd82f2e317e4fb27a9ffbba40d2a, type: 3}
-    - {fileID: 8300000, guid: 7df52b7ae069d5b409627993ae3d5b67, type: 3}
-    - {fileID: 8300000, guid: 89c6e6a311241fd46871ec70a4e6d535, type: 3}
-    - {fileID: 8300000, guid: 45e58469375833d44a16e69c76904c6b, type: 3}
-    volume: 1
-    pitchJitter: 0.04
-  - name: mine_arm_beep
-    clips:
-    - {fileID: 8300000, guid: 7a06cecfd18c2ae42ad56160b5351408, type: 3}
-    - {fileID: 8300000, guid: bd77bb6e2e620b843be8b6058f225aed, type: 3}
-    - {fileID: 8300000, guid: fa6286be483a3304eb3081f67e4dbe57, type: 3}
-    - {fileID: 8300000, guid: 85a03b3c97d8efc4f9cbe8fc754c6943, type: 3}
+    - {fileID: 8300000, guid: 95e7174d93e54c84881d8effb5a4f354, type: 3}
+    - {fileID: 8300000, guid: a2cfa8e0314c2f241b1658c4d03ccc1e, type: 3}
     volume: 1
     pitchJitter: 0.04
   - name: mine_explosion
     clips:
+    - {fileID: 8300000, guid: 06f319dc59f059f468ba2e42aa5eac19, type: 3}
+    - {fileID: 8300000, guid: 0d1c0b2a45f9762428d1d1d1becb1afb, type: 3}
+    - {fileID: 8300000, guid: 721a8d035f4ba8141ac2317cd38737fa, type: 3}
     - {fileID: 8300000, guid: bd50dde9ff5722e459140cd321000445, type: 3}
     - {fileID: 8300000, guid: 1d5614ed76045b04b905a35954e0b3d0, type: 3}
-    - {fileID: 8300000, guid: 9db42737b30e49044928408201cc7459, type: 3}
-    - {fileID: 8300000, guid: 4f0cb410b77296940a46d6acf87e2753, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: mine_plate
+    clips:
+    - {fileID: 8300000, guid: 8bd64c1b73a97dc4186272d56190bf60, type: 3}
+    - {fileID: 8300000, guid: 5f299398bf50bff4bab72a8463ff9982, type: 3}
+    volume: 1
+    pitchJitter: 0.04
+  - name: mine_windup
+    clips:
+    - {fileID: 8300000, guid: 9ebf40b810425b24a908b6c848e6aa25, type: 3}
     volume: 1
     pitchJitter: 0.04
   - name: page_turn
@@ -135,13 +140,16 @@ MonoBehaviour:
     pitchJitter: 0.04
   - name: step_dirt
     clips:
-    - {fileID: 8300000, guid: 6d3df44ab57ced8479a1afe10b11cd77, type: 3}
-    - {fileID: 8300000, guid: 55cb3788c2557fa48ac60a2bd71025f5, type: 3}
-    - {fileID: 8300000, guid: 0de741b1ab6dba145b4214137918cb0f, type: 3}
-    - {fileID: 8300000, guid: ab0b3754d089364489969dcb0a81d2e8, type: 3}
-    - {fileID: 8300000, guid: 52897f5798f8e754cb8986f54ef1cd04, type: 3}
-    - {fileID: 8300000, guid: fb0393bee9851144582d2d1dbccf2562, type: 3}
-    - {fileID: 8300000, guid: 9efa873c228434a4988bb55b9afba92f, type: 3}
+    - {fileID: 8300000, guid: e9daa85ad1a65a940848096226dc8622, type: 3}
+    - {fileID: 8300000, guid: 3197617e84b8fff4f9160d9dd48509af, type: 3}
+    - {fileID: 8300000, guid: 0e9d88430d43c094499b335128d6c3cc, type: 3}
+    - {fileID: 8300000, guid: e3a2d93c8431b0340a35efd4c7c449f4, type: 3}
+    - {fileID: 8300000, guid: e8a65e425159bf847835cb33b8658e92, type: 3}
+    - {fileID: 8300000, guid: 58552b30bf4371340ac6e4e4b00a8474, type: 3}
+    - {fileID: 8300000, guid: 9d5e0f7007da1924ba505df763f9681d, type: 3}
+    - {fileID: 8300000, guid: d2b5f6b6f12d0e04e8299ccbd1e7a6d9, type: 3}
+    - {fileID: 8300000, guid: 86634d8168002ee4f822d37ea9cab451, type: 3}
+    - {fileID: 8300000, guid: 0b715ec89461e054083dd342ae76dd14, type: 3}
     volume: 1
     pitchJitter: 0.04
   - name: ui_click

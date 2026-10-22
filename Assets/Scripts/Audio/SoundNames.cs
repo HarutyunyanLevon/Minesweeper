@@ -3,7 +3,7 @@ namespace MinefieldClerk.Sound
     /// <summary>Sound event names. Each one is a folder under Assets/Audio/Sfx or Assets/Audio/Amb.</summary>
     public static class SfxEvent
     {
-        public const string MineArmBeep = "mine_arm_beep";
+        public const string MinePlate = "mine_plate";
         public const string MineWindup = "mine_windup";
         public const string MineExplosion = "mine_explosion";
         public const string DudFizzle = "dud_fizzle";
